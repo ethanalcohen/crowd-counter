@@ -162,26 +162,31 @@ export function LiveView() {
 
   if (error) {
     return (
-      <div className="p-6 font-mono text-xs" style={{ color: '#ef4444' }}>
+      <section className="flex-1 min-w-0 p-6 font-mono text-xs" style={{ color: '#ef4444' }}>
         {error}
-      </div>
+      </section>
     )
   }
 
   if (downloaded.length === 0) {
     return (
-      <div
-        className="absolute inset-0 flex items-center justify-center font-mono text-xs uppercase tracking-widest"
-        style={{ color: 'var(--color-muted)' }}
+      <section
+        className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-3"
+        style={{ background: '#06090d', color: 'var(--color-muted)' }}
       >
-        Download a collection to start the live feed
-      </div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.25em]">
+          No source available
+        </div>
+        <div className="font-mono text-[10px]" style={{ color: 'var(--color-line-strong)' }}>
+          → DOWNLOAD A COLLECTION FROM THE SIDEBAR TO START THE LIVE FEED
+        </div>
+      </section>
     )
   }
 
   return (
-    <div className="flex h-full">
-      <div ref={containerRef} className="flex-1 relative" style={{ background: '#0a0e13' }}>
+    <section className="flex-1 min-w-0 flex">
+      <div ref={containerRef} className="flex-1 relative" style={{ background: '#06090d' }}>
         <BackgroundGrid />
         {frame && (
           <>
@@ -287,12 +292,10 @@ export function LiveView() {
         <div className="flex-1" />
 
         <div className="p-3 border-t font-mono text-[10px]" style={{ borderColor: 'var(--color-line)', color: 'var(--color-muted)' }}>
-          INFERENCE · STUB MODEL
-          <br />
-          REAL P2PNET/CSRNET PENDING
+          P2PNET · LOCAL INFERENCE
         </div>
       </aside>
-    </div>
+    </section>
   )
 }
 
