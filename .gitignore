@@ -1,9 +1,13 @@
-node_modules/
-target/
-dist/
-.venv/
-__pycache__/
+
+# v2 additions
 *.pyc
 .DS_Store
+.venv/
+__pycache__/
+dist/
+node_modules/
+target/
+web/.svelte-kit/
+web/dist/
+web/node_modules/
 weights/
-

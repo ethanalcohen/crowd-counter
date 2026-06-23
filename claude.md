@@ -1,134 +1,110 @@
-# Crowd Counter
+# Crowd Counter v2
 
-Desktop app for crowd counting, density mapping, and human-in-the-loop annotation. Built to produce training data for a P2PNet model that will run on an autonomous drone.
+A research/visualization tool for a real-time aerial crowd-density tracker that will eventually run headless on a drone (Jetson Orin Nano). The desktop GUI is a debugger / live view for that headless inference path.
+
+**Scope of this codebase: live view only.** Annotation, fine-tuning, Jetson deployment, and 3D / multi-camera / swarm work are deferred to separate sessions and are *not* present.
+
+The v1 build (Tauri + React + Rust + Python) lives on the `v1-react` branch for reference.
 
 ## Architecture
 
 ```
 crowd-counter/
-├── core/                       Shared Python package (model + inference + I/O)
-│   ├── model/p2pnet.py         P2PNet architecture — VGG16-BN backbone, FPN decoder, anchor-based heads
-│   ├── inference.py            ModelHolder (thread-safe lazy loader), infer_image(), density helpers
-│   ├── fetcher.py              Collection download — archive (zip) or per-image manifest via httpx
-│   ├── dataset.py              Annotation/Collection dataclasses, JSON persistence
-│   └── paths.py                Platform-aware dirs via platformdirs (~/Library/Application Support/CrowdCounter/)
-├── app/                        Tauri 2 desktop application
-│   ├── src-tauri/              Rust shell — spawns `uv run python -m app.sidecar.server` on startup, kills on exit
-│   ├── src/                    React 19 + TypeScript + Tailwind v4 + Konva
-│   ├── sidecar/server.py       FastAPI sidecar (HTTP + WebSocket) on port 17893
-│   ├── sidecar/registry.py     Loads app/data/collections.json
-│   └── data/collections.json   Built-in collection manifests
-└── drone/                      (planned) Headless inference for Jetson Orin Nano
+├── crowdcounter/                    Python package — backend + entrypoint
+│   ├── __main__.py                  python -m crowdcounter (boots FastAPI + pywebview window)
+│   ├── server.py                    FastAPI app — /api/health, /api/infer
+│   └── core/                        model + inference (kept from v1)
+│       ├── model/p2pnet.py          P2PNet — VGG16-BN backbone, FPN decoder, anchor-based heads
+│       ├── inference.py             ModelHolder (thread-safe lazy loader), infer_image()
+│       ├── fetcher.py               (kept; not yet wired to v2 video registry)
+│       ├── dataset.py               (kept; not yet used in v2)
+│       └── paths.py                 ~/Library/Application Support/CrowdCounter/
+└── web/                             Svelte 5 + TS + Tailwind v4 frontend
+    ├── src/App.svelte               (Phase 0 stub — health pill only)
+    └── vite.config.ts               proxies /api → :17893
 ```
 
-Two programs share `core/`: the annotation desktop app and (planned) a headless drone runtime. Same model code, same inference path.
+The Python package and the web frontend are deployed together: `crowdcounter.server.py` serves `web/dist/` as static files in production, and proxies to the Vite dev server (`--dev` flag) during development.
 
-## Tech stack
+## Stack
 
-- **Desktop shell**: Tauri 2 (Rust) — manages sidecar lifecycle, provides `sidecar_port` command
-- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4
-- **Canvas**: Konva + react-konva for the annotation view
-- **State**: Zustand — view mode, collection/image selection, refresh coordination
-- **Backend sidecar**: Python 3.11, FastAPI, Uvicorn, WebSockets
-- **ML**: PyTorch (MPS on macOS, CUDA on Linux, CPU fallback), P2PNet (~21M params)
-- **Env**: `uv` for Python, npm for JS, Cargo for Rust
+- **Backend**: Python 3.11, FastAPI, Uvicorn. `uv` for deps.
+- **Frontend**: Svelte 5 (runes), TypeScript, Vite, Tailwind v4.
+- **Window**: `pywebview` 6 — ~50 lines to wrap localhost in a native window. No Rust, no Tauri.
+- **ML**: PyTorch 2.12 with MPS (Mac) / CUDA (Jetson, future) / CPU fallback. P2PNet ~21M params, ~600ms/frame on Apple Silicon.
+- **Pose estimation (planned, Phase 3)**: PerspectiveFields (CVPR 2023) for synthesizing camera orientation from stock footage when real telemetry isn't available.
+
+## Running
+
+```bash
+uv sync                                # Python deps
+cd web && npm install && cd ..         # JS deps
+
+# Dev (Vite HMR + Python sidecar + pywebview window):
+cd web && npm run dev &                # vite on :5173
+uv run python -m crowdcounter --dev    # FastAPI on :17893 + window pointed at vite
+
+# Production (single command, served from built static dist):
+cd web && npm run build && cd ..
+uv run python -m crowdcounter
+
+# Headless (no window, just the API):
+uv run python -m crowdcounter --no-window
+```
+
+The model autoloads in a background thread on server startup; the `/api/health` pill flips from amber → cyan when ready (~5s).
 
 ## Data flow
 
-1. Tauri starts → Rust spawns sidecar from repo root
-2. React gets port via Tauri invoke, talks to sidecar over HTTP/WS
-3. Collections download to `~/Library/Application Support/CrowdCounter/collections/{id}/images/`
-4. Annotations saved as per-image JSON in `collections/{id}/annotations/`
-5. Inference runs in sidecar; client computes density heatmaps from point lists
+1. `python -m crowdcounter` boots FastAPI in a thread, then opens a pywebview window.
+2. Svelte app talks to FastAPI exclusively over `/api/*` (proxied through Vite in dev).
+3. Inference: client posts image bytes to `/api/infer` → server runs P2PNet → returns `{points, peak_xy, count, image_size}`.
+4. **(Coming in Phase 1)**: video streaming via WebSocket — backend decodes a video file frame-by-frame, runs inference, pushes `FrameAnalysis` JSON over WS.
 
-## Key patterns
+## What lives where on disk
 
-### Sidecar API (server.py)
-
-All REST endpoints are synchronous FastAPI handlers. Long-running operations (download, auto-annotate) use WebSocket endpoints that stream JSON progress events. The model loads in a background thread on startup.
-
-When model weights aren't available, inference endpoints return a random stub response (seeded by image content) so the UI remains functional during development.
-
-### Annotation workflow
-
-The annotation flow is model-assisted. Two auto-annotate paths:
-
-1. **Batch**: `WS /collections/{id}/auto-annotate` — runs P2PNet on all unreviewed images, streams progress, saves predictions as unreviewed annotations
-2. **Per-image**: `POST /collections/{id}/auto-annotate/{image_name}` — runs inference on one image, saves annotation, returns result
-
-The user then reviews each image — correcting dots (click to add/remove, drag to move) — and approves via "APPROVE & NEXT" which saves and auto-advances.
-
-Three states: `○` no annotation, `◐` predicted/needs review (yellow), `●` reviewed (green).
-
-### Sidebar lazy loading
-
-The `CollectionExplorer` uses two-phase image loading to handle large datasets (1000+ images):
-
-1. **On expand**: fetches only annotated images (`?status=annotated`) — fast, shows what matters
-2. **On demand**: "LOAD N UNANNOTATED" button fetches the rest (`?status=unannotated`)
-
-Per-image ⚡ buttons let users auto-annotate individual unannotated images inline. Loading spinners appear for every async operation (initial collection fetch, image list loading, per-image inference).
-
-The `CollectionSummary` includes `downloaded_count`, `annotated_count`, and `reviewed_count` — used for progress bars and unannotated counts without fetching the full image list.
-
-### Frontend state
-
-Minimal Zustand store (`state/selection.ts`): `collectionId`, `imageName`, `expanded` set, `view` mode, `refreshKey` counter. No global annotation state — each view loads its own data from the API. `triggerRefresh()` increments `refreshKey` to signal `CollectionExplorer` to re-fetch image lists after mutations.
-
-### Model weights
-
-Loaded from `~/Library/Application Support/CrowdCounter/weights/`. Checks `p2pnet_finetuned.pth` first (fine-tuned), then `SHTechA.pth` (base pretrain). ~82 MB. The `ModelHolder` class in `core/inference.py` is thread-safe with a lock.
-
-## Runtime data layout
+Same locations as v1:
 
 ```
 ~/Library/Application Support/CrowdCounter/
 ├── weights/
-│   ├── SHTechA.pth                  Official pretrained weights
-│   └── p2pnet_finetuned.pth         Fine-tuned weights (preferred if exists)
+│   ├── SHTechA.pth                 official pretrain (~82 MB)
+│   └── p2pnet_finetuned.pth        preferred if present (future, not in scope)
 └── collections/
-    └── {collection-id}/
-        ├── images/                  Downloaded images (.jpg/.png/.webp)
-        └── annotations/            Per-image JSON annotations
+    └── {id}/images/                downloaded test data
 ```
 
-## Running the app
+`ModelHolder` checks `p2pnet_finetuned.pth` first, falls back to `SHTechA.pth`.
 
-```bash
-uv sync                              # Python deps
-cd app && npm install && cd ..        # JS deps
-cd app && npm run tauri dev           # Launch (compiles Rust on first run)
-```
+## Phase plan (from /Users/ethanalcohen/.claude/plans/ok-so-i-want-crystalline-fairy.md)
 
-Weights must be manually placed — see README for curl command.
+- ✅ **Phase 0** — Cleanup + scaffold (this commit).
+- **Phase 1** — Live view v2: video import, per-frame inference over WS, Gaia-style overlays.
+- **Phase 2** — Densest-point trail on the live view.
+- **Phase 3** — Pixel → world coordinates (telemetry-driven + PerspectiveFields fallback).
+- **Phase 4** — Multi-frame Kalman tracking of the peak.
+- **Phase 5** — Stock footage library (Pexels CC0, VisDrone-CC, PETS2009).
 
-## Code conventions
+Out of scope this codebase: annotation UI, fine-tuning loop, Jetson port, 3D / multi-camera.
 
-- Python: type hints everywhere, `from __future__ import annotations`, dataclasses over dicts
-- TypeScript: strict mode, no `any`, functional components, hooks for side effects
-- CSS: Tailwind utility classes + CSS custom properties in `index.css` for the dark theme palette
-- UI: monospace typography (JetBrains Mono), dark theme, military/tactical aesthetic with cyan accent (#00e5ff)
-- No `__init__.py` files for app/sidecar — runs as namespace package from repo root via `python -m app.sidecar.server`
+## Conventions
+
+- Python: type hints everywhere, `from __future__ import annotations`, dataclasses over dicts.
+- TypeScript: strict, no `any`. Svelte 5 runes (`$state`, `$derived`, `$effect`).
+- Styling: Tailwind utility classes. Dark theme baseline. Cyan accent for live data, amber for pending, red for errors. Mono fonts (JetBrains Mono / system mono) for all telemetry numbers.
+- API: all backend routes live under `/api/*`. The root `/` serves the built Svelte app.
+- Sidecar lifecycle: the Python process owns the FastAPI + window. No subprocess split, no Rust shell.
 
 ## Important implementation details
 
-- P2PNet input must have both dimensions as multiples of 128 (see `_resize_for_inference`)
-- The model's conv3/conv4 layers in regression/classification heads are dead weights (present in checkpoint but unused in forward pass) — this matches the official implementation
-- Annotations carry `region` and `density` tags from their parent collection for future training-time filtering
-- Confidence slider in the Inspector is display-only — it filters points client-side but doesn't affect the inference threshold (always 0.5)
-- Save persists only filtered points (those above the confidence slider), so lowering the slider and saving permanently drops low-confidence detections
-- Client density heatmap uses sigma=12, server uses sigma=8 — slight peak position differences between views
-- StrictMode is disabled in main.tsx to avoid double-mount polling issues
+- P2PNet input must have both dims as multiples of 128 (see `_resize_for_inference`).
+- The model's conv3/conv4 in regression/classification heads are dead weights — present in checkpoint, unused in forward. Matches the official Tencent implementation.
+- Vite dev binds to IPv6 `localhost:5173` only (not 127.0.0.1) — use `localhost` not the IP for curl tests.
 
-## Known gaps / incomplete features
+## What's deferred / not built yet
 
-- No training/fine-tuning code or endpoint
-- No HuggingFace auto-download of weights (README claims it, code doesn't do it)
-- Regional collections have empty manifests (no Unsplash seeding yet)
-- No video import (.mp4 → frames)
-- No ONNX export for Jetson
-- drone/ directory doesn't exist yet
-- No tests, no CI
-- `react-router-dom` is installed but unused
-- Tauri bundle icons referenced in tauri.conf.json don't exist in repo
-- `index.html` title is still "app-ui"
+- Video import + per-frame WS stream (Phase 1, next).
+- World coordinate projection (Phase 3).
+- Stock footage library / video registry (Phase 5).
+- Tests, CI.
+- Production app bundling (PyInstaller).

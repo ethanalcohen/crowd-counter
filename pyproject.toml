@@ -15,6 +15,7 @@ dependencies = [
     "platformdirs>=4.3",
     "torch>=2.5",
     "torchvision>=0.20",
+    "pywebview>=5.4",
 ]
 
 [tool.uv]
@@ -23,4 +24,4 @@ package = false
 [tool.uv.sources]
 
 [tool.hatch.build.targets.wheel]
-packages = ["core"]
+packages = ["crowdcounter"]
