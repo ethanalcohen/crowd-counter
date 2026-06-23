@@ -4,6 +4,18 @@ Chronological record of what shipped, what changed, and *why*. Newest entries on
 
 ---
 
+## 2026-06-23 — Fix: switching sources crashed the stream
+
+**Bug**: clicking a second source in the left rail killed the WebSocket on the very first frame with `TypeError: 'NoneType' object is not subscriptable` from Ultralytics' post-predict callback.
+
+**Cause**: [`detector.reset_tracker()`](crowdcounter/core/detector.py) was setting `predictor.trackers = None`, but the `on_predict_postprocess_end` callback in Ultralytics always indexes `predictor.trackers[0]`. Setting to None / [] both crash.
+
+**Fix**: `delattr(predictor, "trackers")` instead — Ultralytics' `register_tracker()` rebuilds the list on the next call when the attribute is absent.
+
+**Verified**: streamed three sources in sequence (`favela-market → istanbul-spice-bazaar → favela-market`); each opens cleanly with track IDs starting from 1.
+
+---
+
 ## 2026-06-23 — Docs, run script, push discipline
 
 - Added [`run.sh`](run.sh) — one-command launcher (`dev` / `build` / `headless`). Handles `uv sync` and `npm install` on first run, traps SIGINT to kill Vite when the Python process exits.

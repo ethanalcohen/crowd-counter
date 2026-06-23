@@ -82,13 +82,19 @@ class DetectorHolder:
             return True
 
     def reset_tracker(self) -> None:
-        """Wipe ByteTrack state so a new stream starts at id=1."""
+        """Wipe ByteTrack state so a new stream starts at id=1.
+
+        Ultralytics' on_predict_postprocess_end callback indexes
+        `predictor.trackers[0]`, so we must *remove* the attribute (not
+        set it to None / []) — ultralytics' register_tracker() will then
+        rebuild it on the next track() call.
+        """
         with self._lock:
             if self._model is None:
                 return
             predictor = getattr(self._model, "predictor", None)
-            if predictor is not None and getattr(predictor, "trackers", None):
-                predictor.trackers = None
+            if predictor is not None and hasattr(predictor, "trackers"):
+                delattr(predictor, "trackers")
 
     def track(self, frame_bgr: np.ndarray, conf: float = 0.25) -> list[Detection]:
         """Run one tracked inference pass on a BGR frame. Returns Detections
