@@ -33,7 +33,7 @@
   <!-- fps selector -->
   <div class="flex items-center gap-1">
     <span class="font-mono text-[9px] tracking-[0.15em] text-neutral-500 mr-2">RATE</span>
-    {#each [1, 2, 4, 8] as r}
+    {#each [1, 2, 3] as r}
       <button
         type="button"
         onclick={() => stream.setFps(r)}

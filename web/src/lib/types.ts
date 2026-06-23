@@ -23,6 +23,14 @@ export interface FrameInference {
   latency_ms: number
 }
 
+export interface PeakTrailEntry {
+  nx: number
+  ny: number
+  t_ms: number
+  frame_idx: number
+  count: number
+}
+
 export interface FrameAnalysis {
   type: 'frame'
   frame_idx: number
@@ -32,6 +40,7 @@ export interface FrameAnalysis {
   frame_jpeg_b64: string
   heatmap_jpeg_b64: string
   inference: FrameInference
+  peak_trail: PeakTrailEntry[]
 }
 
 export interface StreamInfo {

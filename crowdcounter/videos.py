@@ -146,6 +146,8 @@ async def stream_video(ws, video_id: str) -> None:
         return
 
     control = StreamControl()
+    trail: list[dict] = []  # ring of {nx, ny, t_ms, count}
+    TRAIL_LEN = 80
 
     # listen for control messages in parallel
     async def reader():
@@ -218,6 +220,19 @@ async def stream_video(ws, video_id: str) -> None:
 
             result, frame_jpeg, heat_jpeg, latency_ms = await loop.run_in_executor(None, work)
 
+            # update trail: store normalized coords + timestamp + count
+            if result.count > 0:
+                w, h = result.image_size
+                trail.append({
+                    "nx": result.peak_xy[0] / max(w, 1),
+                    "ny": result.peak_xy[1] / max(h, 1),
+                    "t_ms": t_ms,
+                    "frame_idx": frame_idx,
+                    "count": result.count,
+                })
+                if len(trail) > TRAIL_LEN:
+                    trail.pop(0)
+
             payload = {
                 "type": "frame",
                 "frame_idx": frame_idx,
@@ -232,6 +247,7 @@ async def stream_video(ws, video_id: str) -> None:
                     "points": [{"x": p[0], "y": p[1], "confidence": p[2]} for p in result.points],
                     "latency_ms": latency_ms,
                 },
+                "peak_trail": trail.copy(),
             }
             await ws.send_json(payload)
 

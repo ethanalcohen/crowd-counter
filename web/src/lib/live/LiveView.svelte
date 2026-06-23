@@ -2,9 +2,8 @@
   import { onMount } from 'svelte'
   import SourceList from './SourceList.svelte'
   import VideoCanvas from './VideoCanvas.svelte'
-  import HUD from './HUD.svelte'
   import Timeline from './Timeline.svelte'
-  import DetectionList from './DetectionList.svelte'
+  import Inspector from './Inspector.svelte'
   import { stream } from '../stores/stream.svelte'
 
   type Health = { status: string; model_loaded: boolean; weights_source: string | null; device: string | null }
@@ -56,9 +55,8 @@
     <SourceList />
     <main class="relative flex-1 min-w-0">
       <VideoCanvas />
-      <HUD />
     </main>
-    <DetectionList />
+    <Inspector />
   </div>
 
   <Timeline />
