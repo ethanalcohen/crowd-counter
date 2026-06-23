@@ -1,24 +1,26 @@
-"""Video registry + per-frame inference streaming."""
+"""Video registry + per-frame detection / tracking stream."""
 from __future__ import annotations
 
 import asyncio
 import base64
-import io
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
 
-from crowdcounter.core.inference import MODEL, density_from_points, infer_image
+from crowdcounter.core.clustering import cluster_centroid
+from crowdcounter.core.detector import DETECTOR, Detection
 from crowdcounter.core.paths import app_data_root
-from crowdcounter.world import pose_estimator
 from crowdcounter.world.projection import pixel_to_ground
-from crowdcounter.world.telemetry import Telemetry
+from crowdcounter.world.telemetry import CameraIntrinsics, Telemetry
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+# Stock-footage default — most aerial cinema lenses are ~55-70° vertical FOV.
+DEFAULT_VFOV_DEG = 60.0
+# How far from a click (in image pixels) still counts as "you meant this track".
+CLICK_TOLERANCE_PX = 80
 
 
 def videos_root() -> Path:
@@ -52,15 +54,9 @@ def _probe(path: Path) -> VideoInfo | None:
         cap.release()
         duration = frame_count / fps if fps > 0 else 0.0
         return VideoInfo(
-            id=path.stem,
-            name=path.stem,
-            path=str(path),
-            duration_s=duration,
-            fps=fps,
-            width=w,
-            height=h,
-            frame_count=frame_count,
-            size_bytes=path.stat().st_size,
+            id=path.stem, name=path.stem, path=str(path),
+            duration_s=duration, fps=fps, width=w, height=h,
+            frame_count=frame_count, size_bytes=path.stat().st_size,
         )
     except Exception:
         return None
@@ -95,31 +91,8 @@ def _encode_jpeg(arr_bgr: np.ndarray, quality: int = 80, max_width: int | None =
     return buf.tobytes() if ok else b""
 
 
-def _render_heatmap_image(
-    points: list[tuple[float, float]], image_size: tuple[int, int], target_w: int = 256
-) -> bytes:
-    """Compute a Gaussian density map and encode as a small JPEG with a viridis-ish ramp."""
-    w, h = image_size
-    if not points:
-        # transparent-ish blank
-        blank = np.zeros((max(h // 8, 32), max(w // 8, 32), 3), dtype=np.uint8)
-        return _encode_jpeg(blank, quality=70)
-
-    heat, _ = density_from_points(points, image_size, sigma=12, downsample=8)
-    v = heat / (heat.max() + 1e-8)
-    # red->orange->yellow ramp (BGR for cv2)
-    r = np.clip(0.2 + v * 1.5, 0, 1)
-    g = np.clip((v - 0.3) * 1.5, 0, 1)
-    b = np.clip(0.5 - v, 0, 1)
-    bgr = np.stack([b, g, r], axis=-1)
-    bgr = (bgr * 255).astype(np.uint8)
-    # zero-out near-zero pixels so the overlay looks transparent on dark video
-    mask = (v > 0.02).astype(np.uint8)[:, :, None]
-    bgr = bgr * mask
-
-    new_h = int(target_w * bgr.shape[0] / bgr.shape[1])
-    bgr = cv2.resize(bgr, (target_w, new_h), interpolation=cv2.INTER_LINEAR)
-    return _encode_jpeg(bgr, quality=75, max_width=None)
+def _b64(b: bytes) -> str:
+    return base64.b64encode(b).decode("ascii")
 
 
 # ---------- streaming ----------
@@ -130,17 +103,50 @@ class StreamControl:
     target_fps: float = 2.0
     seek_frame: int | None = None
     closed: bool = False
-    alt_m: float = 10.0
-    pose: Telemetry | None = None        # cached estimated pose
-    pose_dirty: bool = True               # force re-estimate when altitude changes etc.
+    alt_m: float = 30.0
+    pitch_deg: float = -90.0  # -90 = nadir, 0 = horizontal
+    vfov_deg: float = DEFAULT_VFOV_DEG
+    selected_track_id: int | None = None
+    pending_click: tuple[float, float] | None = None  # (x, y) in image px
 
 
-def _bgr_to_pil(arr: np.ndarray) -> Image.Image:
-    return Image.fromarray(cv2.cvtColor(arr, cv2.COLOR_BGR2RGB))
+def _build_telemetry(control: StreamControl, width: int, height: int) -> Telemetry:
+    return Telemetry(
+        alt_m=control.alt_m,
+        pitch_deg=control.pitch_deg,
+        roll_deg=0.0,
+        yaw_deg=0.0,
+        intrinsics=CameraIntrinsics.from_vfov(control.vfov_deg, width, height),
+        source="manual",
+        confidence=1.0,
+    )
 
 
-def _b64(b: bytes) -> str:
-    return base64.b64encode(b).decode("ascii")
+def _project(px: float, py: float, telem: Telemetry) -> dict | None:
+    wp = pixel_to_ground(px, py, telem)
+    if wp is None:
+        return None
+    return {
+        "x_m": wp.x_m, "y_m": wp.y_m,
+        "range_m": wp.range_m, "bearing_deg": wp.bearing_deg,
+        "lat": wp.lat, "lon": wp.lon,
+        "source": wp.source, "uncertainty_m": wp.uncertainty_m,
+    }
+
+
+def _resolve_click(dets: list[Detection], cx: float, cy: float) -> int | None:
+    """Pick the nearest detection to a click point, within tolerance."""
+    if not dets:
+        return None
+    best_id = None
+    best_d2 = CLICK_TOLERANCE_PX * CLICK_TOLERANCE_PX
+    for d in dets:
+        dx, dy = d.cx - cx, d.cy - cy
+        d2 = dx * dx + dy * dy
+        if d2 < best_d2:
+            best_d2 = d2
+            best_id = d.track_id
+    return best_id
 
 
 async def stream_video(ws, video_id: str) -> None:
@@ -152,35 +158,43 @@ async def stream_video(ws, video_id: str) -> None:
         return
 
     control = StreamControl()
-    trail: list[dict] = []  # ring of {nx, ny, t_ms, count}
+    centroid_trail: list[dict] = []   # normalized centroid history
     TRAIL_LEN = 80
 
-    # listen for control messages in parallel
+    # Wipe ByteTrack so this stream starts fresh at id=1.
+    DETECTOR.reset_tracker()
+
     async def reader():
         try:
             while not control.closed:
                 msg = await ws.receive_json()
-                if msg.get("action") == "play":
+                action = msg.get("action")
+                if action == "play":
                     control.playing = True
-                elif msg.get("action") == "pause":
+                elif action == "pause":
                     control.playing = False
-                elif msg.get("action") == "seek":
+                elif action == "seek":
                     control.seek_frame = int(msg.get("frame", 0))
-                elif msg.get("action") == "fps":
+                elif action == "fps":
                     control.target_fps = float(msg.get("fps", 2.0))
-                elif msg.get("action") == "altitude":
-                    control.alt_m = float(msg.get("alt_m", 10.0))
-                    control.pose_dirty = True
-                elif msg.get("action") == "reestimate":
-                    control.pose_dirty = True
+                elif action == "altitude":
+                    control.alt_m = float(msg.get("alt_m", 30.0))
+                elif action == "tilt":
+                    # Clamp to (-90, 0] — past horizontal the ray won't hit the ground.
+                    control.pitch_deg = max(-90.0, min(-0.5, float(msg.get("pitch_deg", -90.0))))
+                elif action == "vfov":
+                    control.vfov_deg = max(10.0, min(120.0, float(msg.get("vfov_deg", DEFAULT_VFOV_DEG))))
+                elif action == "select_track":
+                    control.pending_click = (float(msg.get("x", 0)), float(msg.get("y", 0)))
+                elif action == "clear_selection":
+                    control.selected_track_id = None
+                    control.pending_click = None
         except Exception:
             control.closed = True
 
     reader_task = asyncio.create_task(reader())
-
     cap = cv2.VideoCapture(info.path)
 
-    # send info first
     await ws.send_json({
         "type": "info",
         "info": {
@@ -191,9 +205,8 @@ async def stream_video(ws, video_id: str) -> None:
         },
     })
 
-    # make sure model is loaded
-    if not MODEL.is_loaded():
-        MODEL.load()
+    if not DETECTOR.is_loaded():
+        DETECTOR.load()
 
     loop = asyncio.get_running_loop()
 
@@ -202,6 +215,9 @@ async def stream_video(ws, video_id: str) -> None:
             if control.seek_frame is not None:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, control.seek_frame))
                 control.seek_frame = None
+                # Tracker IDs no longer meaningful after a seek.
+                DETECTOR.reset_tracker()
+                control.selected_track_id = None
 
             if not control.playing:
                 await asyncio.sleep(0.05)
@@ -211,111 +227,104 @@ async def stream_video(ws, video_id: str) -> None:
             t_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC))
             ok, frame_bgr = cap.read()
             if not ok:
-                # loop
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                DETECTOR.reset_tracker()
+                control.selected_track_id = None
                 continue
 
-            # decode + infer in a worker thread so we don't block the event loop
-            def work():
+            def work() -> tuple[list[Detection], bytes, float]:
                 t0 = cv2.getTickCount()
-                pil = _bgr_to_pil(frame_bgr)
-                result = infer_image(pil, threshold=0.5)
+                dets = DETECTOR.track(frame_bgr)
                 latency = (cv2.getTickCount() - t0) / cv2.getTickFrequency() * 1000.0
-
-                # estimate / refresh pose if needed
-                new_pose = None
-                if control.pose_dirty or control.pose is None:
-                    try:
-                        new_pose = pose_estimator.estimate_pose(frame_bgr, alt_m=control.alt_m)
-                    except Exception as e:
-                        log_warn = str(e)
-                        new_pose = None
-                    control.pose_dirty = False
-
-                # update pose if we have a fresh one OR if alt changed
-                if new_pose is not None:
-                    control.pose = new_pose
-                elif control.pose is not None and control.pose.alt_m != control.alt_m:
-                    control.pose.alt_m = control.alt_m
-
-                # project peak
-                world_peak = None
-                if control.pose is not None and result.count > 0:
-                    world_peak = pixel_to_ground(result.peak_xy[0], result.peak_xy[1], control.pose)
-
                 frame_jpeg = _encode_jpeg(frame_bgr, quality=78, max_width=1280)
-                heat_jpeg = _render_heatmap_image(
-                    [(p[0], p[1]) for p in result.points],
-                    result.image_size,
-                )
-                return result, frame_jpeg, heat_jpeg, latency, world_peak
+                return dets, frame_jpeg, latency
 
-            result, frame_jpeg, heat_jpeg, latency_ms, world_peak = await loop.run_in_executor(None, work)
+            dets, frame_jpeg, latency_ms = await loop.run_in_executor(None, work)
 
-            # update trail: store normalized coords + timestamp + count
-            if result.count > 0:
-                w, h = result.image_size
-                trail.append({
-                    "nx": result.peak_xy[0] / max(w, 1),
-                    "ny": result.peak_xy[1] / max(h, 1),
+            h, w = frame_bgr.shape[:2]
+
+            # Resolve a pending click to a track id.
+            if control.pending_click is not None:
+                cx, cy = control.pending_click
+                control.pending_click = None
+                hit = _resolve_click(dets, cx, cy)
+                if hit is not None:
+                    control.selected_track_id = hit
+
+            # Verify selected track still exists this frame.
+            selected_det = None
+            if control.selected_track_id is not None:
+                for d in dets:
+                    if d.track_id == control.selected_track_id:
+                        selected_det = d
+                        break
+
+            # Dense-region centroid.
+            cluster = cluster_centroid([(d.cx, d.cy) for d in dets], (w, h))
+
+            # Update centroid trail.
+            if cluster is not None:
+                centroid_trail.append({
+                    "nx": cluster.cx / max(w, 1),
+                    "ny": cluster.cy / max(h, 1),
                     "t_ms": t_ms,
                     "frame_idx": frame_idx,
-                    "count": result.count,
+                    "count": len(dets),
                 })
-                if len(trail) > TRAIL_LEN:
-                    trail.pop(0)
+                if len(centroid_trail) > TRAIL_LEN:
+                    centroid_trail.pop(0)
 
-            pose_dict = None
-            if control.pose is not None:
-                pose_dict = {
-                    "pitch_deg": control.pose.pitch_deg,
-                    "roll_deg": control.pose.roll_deg,
-                    "yaw_deg": control.pose.yaw_deg,
-                    "alt_m": control.pose.alt_m,
-                    "source": control.pose.source,
-                    "confidence": control.pose.confidence,
-                    "vfov_deg": (
-                        2 * 57.29577951 * np.arctan(
-                            (control.pose.intrinsics.height / 2) / control.pose.intrinsics.fy
-                        )
-                        if control.pose.intrinsics else None
-                    ),
-                }
-
-            world_dict = None
-            if world_peak is not None:
-                world_dict = {
-                    "x_m": world_peak.x_m,
-                    "y_m": world_peak.y_m,
-                    "range_m": world_peak.range_m,
-                    "bearing_deg": world_peak.bearing_deg,
-                    "lat": world_peak.lat,
-                    "lon": world_peak.lon,
-                    "source": world_peak.source,
-                    "uncertainty_m": world_peak.uncertainty_m,
-                }
+            # Build telemetry + world projections.
+            telem = _build_telemetry(control, w, h)
+            world_centroid = _project(cluster.cx, cluster.cy, telem) if cluster else None
+            world_selected = _project(selected_det.cx, selected_det.cy, telem) if selected_det else None
 
             payload = {
                 "type": "frame",
                 "frame_idx": frame_idx,
                 "t_ms": t_ms,
-                "width": result.image_size[0],
-                "height": result.image_size[1],
+                "width": w,
+                "height": h,
                 "frame_jpeg_b64": _b64(frame_jpeg),
-                "heatmap_jpeg_b64": _b64(heat_jpeg),
-                "inference": {
-                    "count": result.count,
-                    "peak_xy": list(result.peak_xy),
-                    "points": [{"x": p[0], "y": p[1], "confidence": p[2]} for p in result.points],
-                    "latency_ms": latency_ms,
+                "latency_ms": latency_ms,
+                "detections": [
+                    {
+                        "id": d.track_id,
+                        "cx": d.cx, "cy": d.cy,
+                        "bbox": list(d.bbox),
+                        "conf": d.conf,
+                    } for d in dets
+                ],
+                "count": len(dets),
+                "cluster": (
+                    {
+                        "cx": cluster.cx, "cy": cluster.cy,
+                        "radius_px": cluster.radius_px,
+                        "member_count": cluster.member_count,
+                    } if cluster else None
+                ),
+                "selected": (
+                    {
+                        "id": selected_det.track_id,
+                        "cx": selected_det.cx, "cy": selected_det.cy,
+                        "bbox": list(selected_det.bbox),
+                    } if selected_det else None
+                ),
+                "centroid_trail": centroid_trail.copy(),
+                "pose": {
+                    "pitch_deg": control.pitch_deg,
+                    "roll_deg": 0.0,
+                    "yaw_deg": 0.0,
+                    "alt_m": control.alt_m,
+                    "vfov_deg": control.vfov_deg,
+                    "source": "manual",
+                    "confidence": 1.0,
                 },
-                "peak_trail": trail.copy(),
-                "pose": pose_dict,
-                "peak_world": world_dict,
+                "world_centroid": world_centroid,
+                "world_selected": world_selected,
             }
             await ws.send_json(payload)
 
-            # pace by target fps (cap at inference latency floor)
             interval = max(1.0 / max(control.target_fps, 0.1), latency_ms / 1000.0)
             await asyncio.sleep(interval)
     finally:

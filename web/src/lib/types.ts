@@ -10,20 +10,29 @@ export interface VideoInfo {
   size_bytes: number
 }
 
-export interface Point {
-  x: number
-  y: number
-  confidence: number
+export interface Detection {
+  id: number
+  cx: number
+  cy: number
+  bbox: [number, number, number, number]   // x, y, w, h (top-left + size)
+  conf: number
 }
 
-export interface FrameInference {
-  count: number
-  peak_xy: [number, number]
-  points: Point[]
-  latency_ms: number
+export interface ClusterData {
+  cx: number
+  cy: number
+  radius_px: number
+  member_count: number
 }
 
-export interface PeakTrailEntry {
+export interface SelectedTrack {
+  id: number
+  cx: number
+  cy: number
+  bbox: [number, number, number, number]
+}
+
+export interface CentroidTrailEntry {
   nx: number
   ny: number
   t_ms: number
@@ -36,9 +45,9 @@ export interface PoseData {
   roll_deg: number
   yaw_deg: number
   alt_m: number
+  vfov_deg: number
   source: 'drone' | 'estimated' | 'manual' | 'none'
   confidence: number
-  vfov_deg: number | null
 }
 
 export interface WorldPointData {
@@ -59,11 +68,15 @@ export interface FrameAnalysis {
   width: number
   height: number
   frame_jpeg_b64: string
-  heatmap_jpeg_b64: string
-  inference: FrameInference
-  peak_trail: PeakTrailEntry[]
-  pose: PoseData | null
-  peak_world: WorldPointData | null
+  latency_ms: number
+  detections: Detection[]
+  count: number
+  cluster: ClusterData | null
+  selected: SelectedTrack | null
+  centroid_trail: CentroidTrailEntry[]
+  pose: PoseData
+  world_centroid: WorldPointData | null
+  world_selected: WorldPointData | null
 }
 
 export interface StreamInfo {

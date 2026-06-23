@@ -2,11 +2,9 @@
   import { stream } from '../stores/stream.svelte'
 
   let containerEl = $state<HTMLDivElement | null>(null)
-  let showHeatmap = $state(true)
+  let showDetections = $state(true)
   let frame = $derived(stream.frame)
   let frameSrc = $derived(frame ? `data:image/jpeg;base64,${frame.frame_jpeg_b64}` : null)
-  let heatSrc = $derived(frame ? `data:image/jpeg;base64,${frame.heatmap_jpeg_b64}` : null)
-  let peakPx = $derived<[number, number] | null>(frame ? frame.inference.peak_xy as [number, number] : null)
   let rendered = $state({ w: 0, h: 0, ox: 0, oy: 0 })
 
   $effect(() => {
@@ -26,15 +24,43 @@
     return () => ro.disconnect()
   })
 
-  let peakOnScreen = $derived(
-    frame && peakPx && rendered.w > 0
-      ? { x: rendered.ox + (peakPx[0] / frame.width) * rendered.w,
-          y: rendered.oy + (peakPx[1] / frame.height) * rendered.h }
-      : null,
-  )
+  // screen <-> image coord helpers
+  function imgToScreen(x: number, y: number) {
+    if (!frame || rendered.w === 0) return { x: 0, y: 0 }
+    return {
+      x: rendered.ox + (x / frame.width) * rendered.w,
+      y: rendered.oy + (y / frame.height) * rendered.h,
+    }
+  }
+  function screenToImg(sx: number, sy: number) {
+    if (!frame || rendered.w === 0) return null
+    const ix = ((sx - rendered.ox) / rendered.w) * frame.width
+    const iy = ((sy - rendered.oy) / rendered.h) * frame.height
+    if (ix < 0 || iy < 0 || ix > frame.width || iy > frame.height) return null
+    return { x: ix, y: iy }
+  }
+
+  function pxScale() {
+    return frame && rendered.w > 0 ? rendered.w / frame.width : 1
+  }
+
+  function onCanvasClick(ev: MouseEvent) {
+    if (!frame || !containerEl) return
+    const rect = containerEl.getBoundingClientRect()
+    const sx = ev.clientX - rect.left
+    const sy = ev.clientY - rect.top
+    const p = screenToImg(sx, sy)
+    if (p) stream.selectTrack(p.x, p.y)
+  }
 </script>
 
-<div bind:this={containerEl} class="relative w-full h-full overflow-hidden" style:background="#000">
+<div
+  bind:this={containerEl}
+  class="relative w-full h-full overflow-hidden"
+  style:background="#000"
+  onclick={onCanvasClick}
+  role="presentation"
+>
   {#if !frame}
     <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
       <div class="label text-[10px]">NO FEED</div>
@@ -43,22 +69,68 @@
   {:else}
     <img
       src={frameSrc} alt="frame"
-      class="absolute"
+      class="absolute pointer-events-none"
       style:left="{rendered.ox}px" style:top="{rendered.oy}px"
       style:width="{rendered.w}px" style:height="{rendered.h}px"
     />
-    {#if showHeatmap}
-      <img
-        src={heatSrc} alt="heatmap"
+
+    {#if showDetections}
+      <!-- per-person dots + id labels -->
+      <svg
         class="absolute pointer-events-none"
         style:left="{rendered.ox}px" style:top="{rendered.oy}px"
         style:width="{rendered.w}px" style:height="{rendered.h}px"
-        style:opacity="0.55"
-        style:mix-blend-mode="screen"
-      />
+        viewBox="0 0 {frame.width} {frame.height}"
+        preserveAspectRatio="none"
+      >
+        {#each frame.detections as d (d.id)}
+          {@const isSel = frame.selected?.id === d.id}
+          <circle
+            cx={d.cx} cy={d.cy}
+            r={isSel ? 9 / pxScale() : 4 / pxScale()}
+            fill="none"
+            stroke={isSel ? 'var(--accent)' : 'rgba(245,158,11,0.55)'}
+            stroke-width={isSel ? 2 / pxScale() : 1 / pxScale()}
+          />
+        {/each}
+      </svg>
     {/if}
 
-    <!-- HUD corner brackets inside the rendered image -->
+    {#if frame.cluster}
+      <!-- dense-region halo -->
+      {@const c = imgToScreen(frame.cluster.cx, frame.cluster.cy)}
+      {@const r = frame.cluster.radius_px * pxScale()}
+      <div
+        class="absolute pointer-events-none rounded-full"
+        style:left="{c.x - r}px" style:top="{c.y - r}px"
+        style:width="{r * 2}px" style:height="{r * 2}px"
+        style:border="1px dashed var(--accent)"
+        style:background="radial-gradient(circle, rgba(245,158,11,0.18) 0%, rgba(245,158,11,0) 70%)"
+      ></div>
+      <div
+        class="absolute pointer-events-none text-[9px] tracking-wider"
+        style:left="{c.x + r + 4}px" style:top="{c.y - 6}px"
+        style:color="var(--accent)"
+        style:text-shadow="0 0 4px rgba(0,0,0,0.9)"
+      >
+        DENSE · N={frame.cluster.member_count}
+      </div>
+    {/if}
+
+    {#if frame.selected}
+      <!-- selected track lock-on -->
+      {@const s = imgToScreen(frame.selected.cx, frame.selected.cy)}
+      <div
+        class="absolute pointer-events-none text-[9px] tracking-wider"
+        style:left="{s.x + 14}px" style:top="{s.y - 14}px"
+        style:color="var(--accent)"
+        style:text-shadow="0 0 4px rgba(0,0,0,0.9)"
+      >
+        TGT · ID {frame.selected.id}
+      </div>
+    {/if}
+
+    <!-- HUD corner brackets -->
     <div
       class="absolute pointer-events-none"
       style:left="{rendered.ox}px" style:top="{rendered.oy}px"
@@ -74,40 +146,28 @@
       <div class="absolute" style:bottom="0" style:right="0" style:width="1px" style:height="16px" style:background="var(--accent)"></div>
     </div>
 
-    {#if peakOnScreen && peakPx && (peakPx[0] !== 0 || peakPx[1] !== 0)}
-      <div
-        class="absolute pointer-events-none"
-        style:left="{peakOnScreen.x}px" style:top="{peakOnScreen.y}px"
-        style:transform="translate(-50%, -50%)"
-      >
-        <svg width="60" height="60" style="overflow: visible">
-          <line x1="30" y1="6" x2="30" y2="20" stroke="var(--accent)" stroke-width="1"/>
-          <line x1="30" y1="40" x2="30" y2="54" stroke="var(--accent)" stroke-width="1"/>
-          <line x1="6" y1="30" x2="20" y2="30" stroke="var(--accent)" stroke-width="1"/>
-          <line x1="40" y1="30" x2="54" y2="30" stroke="var(--accent)" stroke-width="1"/>
-          <rect x="28" y="28" width="4" height="4" fill="var(--accent)"/>
-        </svg>
-        <div
-          class="absolute text-[9px] whitespace-nowrap tracking-wider"
-          style:left="42px" style:top="28px"
-          style:color="var(--accent)"
-          style:text-shadow="0 0 4px rgba(0,0,0,0.9)"
+    <!-- controls strip -->
+    <div class="absolute bottom-2 right-2 flex gap-2">
+      {#if frame.selected}
+        <button
+          type="button"
+          onclick={(e) => { e.stopPropagation(); stream.clearSelection() }}
+          style:background="transparent"
+          style:border-color="var(--line)"
+          style:color="var(--text-muted)"
         >
-          TGT · {peakPx[0]},{peakPx[1]}
-        </div>
-      </div>
-    {/if}
-
-    <!-- bottom-right: heatmap toggle -->
-    <button
-      type="button"
-      onclick={() => showHeatmap = !showHeatmap}
-      class="absolute bottom-2 right-2"
-      style:background={showHeatmap ? 'var(--accent-dim)' : 'transparent'}
-      style:border-color={showHeatmap ? 'var(--accent)' : 'var(--line)'}
-      style:color={showHeatmap ? 'var(--accent)' : 'var(--text-muted)'}
-    >
-      HEATMAP {showHeatmap ? 'ON' : 'OFF'}
-    </button>
+          CLEAR · ID {frame.selected.id}
+        </button>
+      {/if}
+      <button
+        type="button"
+        onclick={(e) => { e.stopPropagation(); showDetections = !showDetections }}
+        style:background={showDetections ? 'var(--accent-dim)' : 'transparent'}
+        style:border-color={showDetections ? 'var(--accent)' : 'var(--line)'}
+        style:color={showDetections ? 'var(--accent)' : 'var(--text-muted)'}
+      >
+        DETS {showDetections ? 'ON' : 'OFF'}
+      </button>
+    </div>
   {/if}
 </div>

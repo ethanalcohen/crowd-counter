@@ -7,7 +7,9 @@ class StreamStore {
   playing = $state(true)
   fps = $state(2)
   fpsActual = $state(0)
-  altitude = $state(10)
+  altitude = $state(30)
+  tilt = $state(-90)         // -90 = nadir, 0 = horizontal
+  vfov = $state(60)
   error = $state<string | null>(null)
   connected = $state(false)
 
@@ -32,6 +34,8 @@ class StreamStore {
       this.connected = true
       this.send({ action: 'fps', fps: this.fps })
       this.send({ action: 'altitude', alt_m: this.altitude })
+      this.send({ action: 'tilt', pitch_deg: this.tilt })
+      this.send({ action: 'vfov', vfov_deg: this.vfov })
       this.send({ action: this.playing ? 'play' : 'pause' })
     }
 
@@ -66,11 +70,7 @@ class StreamStore {
 
   disconnect() {
     if (this.ws) {
-      try {
-        this.ws.close()
-      } catch {
-        /* ignore */
-      }
+      try { this.ws.close() } catch { /* ignore */ }
       this.ws = null
     }
     this.connected = false
@@ -81,23 +81,13 @@ class StreamStore {
     this.send({ action: this.playing ? 'play' : 'pause' })
   }
 
-  seek(frameIdx: number) {
-    this.send({ action: 'seek', frame: frameIdx })
-  }
-
-  setFps(fps: number) {
-    this.fps = fps
-    this.send({ action: 'fps', fps })
-  }
-
-  setAltitude(alt_m: number) {
-    this.altitude = alt_m
-    this.send({ action: 'altitude', alt_m })
-  }
-
-  reestimatePose() {
-    this.send({ action: 'reestimate' })
-  }
+  seek(frameIdx: number) { this.send({ action: 'seek', frame: frameIdx }) }
+  setFps(fps: number) { this.fps = fps; this.send({ action: 'fps', fps }) }
+  setAltitude(alt_m: number) { this.altitude = alt_m; this.send({ action: 'altitude', alt_m }) }
+  setTilt(pitch_deg: number) { this.tilt = pitch_deg; this.send({ action: 'tilt', pitch_deg }) }
+  setVfov(vfov_deg: number) { this.vfov = vfov_deg; this.send({ action: 'vfov', vfov_deg }) }
+  selectTrack(x: number, y: number) { this.send({ action: 'select_track', x, y }) }
+  clearSelection() { this.send({ action: 'clear_selection' }) }
 
   private send(msg: object) {
     if (this.ws?.readyState === WebSocket.OPEN) {

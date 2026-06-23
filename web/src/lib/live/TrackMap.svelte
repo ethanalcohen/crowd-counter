@@ -1,7 +1,7 @@
 <script lang="ts">
   import { stream } from '../stores/stream.svelte'
   let frame = $derived(stream.frame)
-  let trail = $derived(frame?.peak_trail ?? [])
+  let trail = $derived(frame?.centroid_trail ?? [])
   let current = $derived(trail.length > 0 ? trail[trail.length - 1] : null)
 </script>
 
