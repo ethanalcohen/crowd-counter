@@ -113,7 +113,7 @@ export function AnnotateView() {
         )}
         {autoInferring && (
           <div
-            className="absolute top-3 left-1/2 -translate-x-1/2 font-mono text-[11px] tracking-[0.15em] px-4 py-2"
+            className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 font-mono text-[11px] tracking-[0.15em] px-4 py-2"
             style={{
               background: 'rgba(251,191,36,0.9)',
               color: '#000',
@@ -121,6 +121,10 @@ export function AnnotateView() {
               zIndex: 10,
             }}
           >
+            <span
+              className="inline-block w-3 h-3 border-2 border-t-transparent rounded-full"
+              style={{ borderColor: '#000', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }}
+            />
             RUNNING AUTO-INFERENCE…
           </div>
         )}

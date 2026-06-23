@@ -172,7 +172,15 @@ export function Inspector(p: Props) {
             opacity: !p.hasImage ? 0.5 : 1,
           }}
         >
-          {busy ? '· WORKING ·' : 'RE-RUN INFERENCE'}
+          {busy ? (
+            <span className="flex items-center justify-center gap-2">
+              <span
+                className="inline-block w-3 h-3 border-2 border-t-transparent rounded-full"
+                style={{ borderColor: '#000', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }}
+              />
+              WORKING…
+            </span>
+          ) : 'RE-RUN INFERENCE'}
         </button>
 
         {statusMsg && (

@@ -161,7 +161,7 @@ export function AnnotationCanvas({ imageUrl, points, onChange, density, showHeat
           )}
         </Layer>
         <Layer>
-          {points.map((p, i) => (
+          {img && points.map((p, i) => (
             <Circle
               key={i}
               name="dot"
@@ -179,7 +179,7 @@ export function AnnotationCanvas({ imageUrl, points, onChange, density, showHeat
               onDragEnd={(e) => moveAt(i, e.target.x(), e.target.y())}
             />
           ))}
-          {peak && (
+          {img && peak && (
             <>
               <Circle
                 x={peak.x}
