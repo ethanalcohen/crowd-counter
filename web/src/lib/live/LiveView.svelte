@@ -8,45 +8,61 @@
 
   type Health = { status: string; model_loaded: boolean; weights_source: string | null; device: string | null }
   let health = $state<Health | null>(null)
+  let bootedAt = Date.now()
+  let nowTick = $state(Date.now())
 
   async function pollHealth() {
     try {
       const r = await fetch('/api/health')
       health = await r.json()
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }
 
   onMount(() => {
     pollHealth()
-    const t = setInterval(pollHealth, health?.model_loaded ? 15000 : 1500)
-    return () => clearInterval(t)
+    const h = setInterval(pollHealth, health?.model_loaded ? 15000 : 1500)
+    const t = setInterval(() => (nowTick = Date.now()), 1000)
+    return () => { clearInterval(h); clearInterval(t) }
   })
 
-  let healthPill = $derived(
-    health
-      ? health.model_loaded
-        ? { color: '#22d3ee', text: `P2PNET · ${health.device?.toUpperCase() ?? 'READY'}` }
-        : { color: '#fbbf24', text: 'LOADING MODEL…' }
-      : { color: '#737373', text: 'CONNECTING…' },
-  )
+  let uptime = $derived.by(() => {
+    const s = Math.floor((nowTick - bootedAt) / 1000)
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+  })
+
+  let sidecarStatus = $derived(health ? (health.status === 'ok' ? 'OK' : 'ERR') : '---')
+  let modelStatus = $derived(health ? (health.model_loaded ? (health.device?.toUpperCase() ?? 'READY') : 'LOADING') : '---')
+  let sidecarColor = $derived(health?.status === 'ok' ? 'var(--ok)' : 'var(--amber)')
+  let modelColor = $derived(health?.model_loaded ? 'var(--cyan)' : 'var(--amber)')
 </script>
 
 <div class="flex flex-col h-screen">
-  <!-- topbar -->
-  <header class="flex items-center justify-between h-10 border-b border-neutral-800 bg-neutral-950 px-4">
-    <div class="flex items-center gap-6">
-      <span class="font-mono text-[11px] tracking-[0.25em] text-cyan-400 font-semibold">CROWD/COUNTER</span>
-      <span class="font-mono text-[10px] tracking-[0.2em] text-neutral-500">LIVE</span>
+  <!-- topbar — compact readout strip -->
+  <header class="flex items-center h-8 border-b" style:border-color="var(--line)" style:background="var(--surface)">
+    <div class="px-3 h-full flex items-center border-r" style:border-color="var(--line)">
+      <span class="label text-accent" style:color="var(--accent)" style:font-weight="600">CROWD//COUNTER</span>
     </div>
-    <div
-      class="inline-flex items-center gap-2 font-mono text-[10px] tracking-widest px-2.5 py-1 border"
-      style:color={healthPill.color}
-      style:border-color={healthPill.color}
-    >
-      <span class="w-1.5 h-1.5" style:background={healthPill.color} style:box-shadow="0 0 6px {healthPill.color}"></span>
-      {healthPill.text}
+    <div class="px-3 h-full flex items-center border-r label" style:border-color="var(--line)">LIVE</div>
+
+    <!-- spacer -->
+    <div class="flex-1"></div>
+
+    <!-- status strip -->
+    <div class="flex h-full">
+      <div class="flex items-center gap-2 px-3 border-l h-full" style:border-color="var(--line)">
+        <span class="label">SIDECAR</span>
+        <span class="w-1.5 h-1.5" style:background={sidecarColor}></span>
+        <span style:color={sidecarColor} class="text-[10px]">{sidecarStatus}</span>
+      </div>
+      <div class="flex items-center gap-2 px-3 border-l h-full" style:border-color="var(--line)">
+        <span class="label">MODEL</span>
+        <span class="w-1.5 h-1.5" style:background={modelColor}></span>
+        <span style:color={modelColor} class="text-[10px]">{modelStatus}</span>
+      </div>
+      <div class="flex items-center gap-2 px-3 border-l h-full" style:border-color="var(--line)">
+        <span class="label">UPTIME</span>
+        <span class="text-[10px] text-soft tabular-nums">{uptime}</span>
+      </div>
     </div>
   </header>
 

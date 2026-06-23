@@ -10,11 +10,7 @@
     try {
       const r = await fetch('/api/videos')
       videos = await r.json()
-    } catch (e) {
-      console.error(e)
-    } finally {
-      loading = false
-    }
+    } catch (e) { console.error(e) } finally { loading = false }
   }
 
   onMount(() => {
@@ -23,50 +19,52 @@
     return () => clearInterval(t)
   })
 
-  function fmtBytes(b: number) {
-    return b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${(b / 1024).toFixed(0)} KB`
-  }
   function fmtDur(s: number) {
     const m = Math.floor(s / 60)
     return `${m}:${String(Math.floor(s - m * 60)).padStart(2, '0')}`
   }
 </script>
 
-<aside class="h-full flex flex-col border-r border-neutral-800 bg-neutral-950 w-64">
-  <header class="px-3 py-2 border-b border-neutral-800 font-mono text-[10px] tracking-[0.2em] text-neutral-500">
-    SOURCES
+<aside class="h-full flex flex-col border-r w-60" style:border-color="var(--line)" style:background="var(--surface)">
+  <header class="px-3 py-2 border-b label" style:border-color="var(--line)" style:background="var(--surface-2)">
+    FEEDS · {videos.length}
   </header>
 
   <div class="flex-1 overflow-y-auto">
     {#if loading}
-      <div class="p-3 font-mono text-[10px] text-neutral-500">SCANNING…</div>
+      <div class="p-3 text-[10px] text-muted">SCANNING…</div>
     {:else if videos.length === 0}
-      <div class="p-3 font-mono text-[10px] text-neutral-500 leading-relaxed">
-        no videos found.<br/><br/>
-        drop .mp4 files into<br/>
-        <code class="text-cyan-400 text-[9px]">~/Library/Application Support/CrowdCounter/videos/</code>
+      <div class="p-3 text-[10px] text-muted leading-relaxed">
+        no feeds.<br/><br/>
+        drop .mp4 into:<br/>
+        <span class="text-cyan text-[9px]">~/Library/Application Support/CrowdCounter/videos/</span>
       </div>
     {:else}
       {#each videos as v (v.id)}
+        {@const selected = stream.videoId === v.id}
         <button
           type="button"
           onclick={() => stream.connect(v.id)}
-          class="w-full text-left px-3 py-2 border-b border-neutral-900 hover:bg-neutral-900 transition"
-          class:bg-cyan-950={stream.videoId === v.id}
-          style:border-left={stream.videoId === v.id ? '3px solid #22d3ee' : '3px solid transparent'}
+          class="w-full text-left px-3 py-2 border-b block hover:bg-[var(--surface-2)] transition"
+          style:border-color="var(--line)"
+          style:background={selected ? 'var(--accent-dim)' : 'transparent'}
+          style:border-left={selected ? '2px solid var(--accent)' : '2px solid transparent'}
+          style:text-transform="none"
+          style:letter-spacing="normal"
+          style:font-size="11px"
+          style:padding="8px 10px"
         >
-          <div class="text-[12px] truncate" class:text-cyan-400={stream.videoId === v.id}>
-            {v.name}
+          <div class="flex items-center gap-2">
+            <span class="w-1 h-1" style:background={selected ? 'var(--accent)' : 'var(--text-dim)'}></span>
+            <span class="flex-1 truncate" style:color={selected ? 'var(--accent)' : 'var(--text)'}>
+              {v.name}
+            </span>
           </div>
-          <div class="font-mono text-[10px] text-neutral-500 mt-0.5 tracking-[0.05em]">
-            {v.width}×{v.height} · {v.fps.toFixed(0)} FPS · {fmtDur(v.duration_s)} · {fmtBytes(v.size_bytes)}
+          <div class="text-[9px] text-muted mt-0.5 pl-3 tracking-wider">
+            {v.width}×{v.height} · {v.fps.toFixed(0)}F · {fmtDur(v.duration_s)}
           </div>
         </button>
       {/each}
     {/if}
   </div>
-
-  <footer class="px-3 py-2 border-t border-neutral-800 font-mono text-[9px] text-neutral-600">
-    {videos.length} {videos.length === 1 ? 'SOURCE' : 'SOURCES'}
-  </footer>
 </aside>
