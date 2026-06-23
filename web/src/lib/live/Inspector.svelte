@@ -9,9 +9,9 @@
   let inferenceFps = $derived(frame ? 1000 / Math.max(frame.inference.latency_ms, 1) : 0)
 
   const poseSourceColor: Record<string, string> = {
-    drone: 'var(--cyan)',
-    estimated: 'var(--amber)',
-    manual: 'var(--accent)',
+    drone: 'var(--amber-bright)',  /* hot — real telemetry */
+    estimated: 'var(--yellow)',     /* warm — guessed from image */
+    manual: 'var(--white-d)',       /* cold — hand-entered */
     none: 'var(--text-dim)',
   }
 </script>

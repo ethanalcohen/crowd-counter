@@ -20,7 +20,7 @@
     <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
       <polyline
         points={trail.map(p => `${p.nx * 100},${p.ny * 100}`).join(' ')}
-        fill="none" stroke="var(--accent)" stroke-width="0.4" stroke-opacity="0.5"
+        fill="none" stroke="var(--accent)" stroke-width="0.5" stroke-opacity="0.55"
         vector-effect="non-scaling-stroke"
       />
     </svg>
@@ -33,7 +33,7 @@
         style:transform="translate(-50%, -50%)"
         style:width="{isCurrent ? 8 : 3}px"
         style:height="{isCurrent ? 8 : 3}px"
-        style:background={isCurrent ? 'var(--accent)' : `rgba(34,197,94,${0.15 + (i / trail.length) * 0.5})`}
+        style:background={isCurrent ? 'var(--accent)' : `rgba(245,158,11,${0.15 + (i / trail.length) * 0.5})`}
         style:box-shadow={isCurrent ? '0 0 8px var(--accent-glow)' : 'none'}
       ></div>
     {/each}

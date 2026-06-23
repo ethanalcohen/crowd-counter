@@ -32,8 +32,8 @@
 
   let sidecarStatus = $derived(health ? (health.status === 'ok' ? 'OK' : 'ERR') : '---')
   let modelStatus = $derived(health ? (health.model_loaded ? (health.device?.toUpperCase() ?? 'READY') : 'LOADING') : '---')
-  let sidecarColor = $derived(health?.status === 'ok' ? 'var(--ok)' : 'var(--amber)')
-  let modelColor = $derived(health?.model_loaded ? 'var(--cyan)' : 'var(--amber)')
+  let sidecarColor = $derived(health?.status === 'ok' ? 'var(--amber)' : 'var(--red)')
+  let modelColor = $derived(health?.model_loaded ? 'var(--white-d)' : 'var(--yellow)')
 </script>
 
 <div class="flex flex-col h-screen">

@@ -4,32 +4,39 @@
 :root {
   color-scheme: dark;
 
-  /* surfaces */
-  --bg:           #020617;
-  --surface:      #0a0f1d;
-  --surface-2:    #111827;
-  --surface-3:    #1a2436;
+  /* surfaces — neutral warm-black, ZERO blue */
+  --bg:           #0a0a0a;
+  --surface:      #131313;
+  --surface-2:    #1a1a1a;
+  --surface-3:    #222222;
 
   /* lines */
-  --line:         #1f2937;
-  --line-strong:  #334155;
+  --line:         #262626;
+  --line-strong:  #3a3a3a;
 
-  /* text */
-  --text:         #e6ecf2;
-  --text-soft:    #b3bccc;
-  --text-muted:   #64748b;
-  --text-dim:     #475569;
+  /* text — slightly warm white, no blue tint */
+  --text:         #e8e8e8;
+  --text-soft:    #b8b8b8;
+  --text-muted:   #707070;
+  --text-dim:     #4a4a4a;
 
-  /* state colors */
-  --ok:           #22c55e;   /* tracked / locked / healthy */
-  --cyan:         #06b6d4;   /* connected / streaming / data */
-  --amber:        #f59e0b;   /* estimated / degraded / loading */
-  --red:          #ef4444;   /* error / critical */
+  /* state colors — Palantir/Anduril family */
+  --amber:        #f59e0b;   /* primary: tracked / active / selected */
+  --amber-bright: #fbbf24;   /* hover / highlighted */
+  --white-d:      #e8e8e8;   /* data / streaming / live */
+  --red:          #dc2626;   /* critical / error / hostile */
+  --red-bright:   #f87171;
+  --yellow:       #eab308;   /* caution / pending */
 
-  /* primary accent (military green) */
-  --accent:       var(--ok);
-  --accent-dim:   rgba(34, 197, 94, 0.18);
-  --accent-glow:  rgba(34, 197, 94, 0.45);
+  /* primary accent = amber (was green) */
+  --accent:       var(--amber);
+  --accent-bright:var(--amber-bright);
+  --accent-dim:   rgba(245, 158, 11, 0.12);
+  --accent-glow:  rgba(245, 158, 11, 0.45);
+
+  /* alias the old --ok and --cyan tokens so existing component code still works */
+  --ok:           var(--amber);
+  --cyan:         var(--white-d);
 }
 
 html, body, #app { height: 100%; margin: 0; }
@@ -47,7 +54,7 @@ body {
   border-radius: 0 !important;
 }
 
-/* range input — thin, mono, no rounded thumb */
+/* range input — slim, no rounded thumb */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
@@ -65,7 +72,6 @@ input[type='range']::-webkit-slider-thumb {
   box-shadow: 0 0 4px var(--accent-glow);
 }
 
-/* scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); }
@@ -83,7 +89,10 @@ button {
   padding: 6px 10px;
   transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
 }
-button:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+button:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
 button:disabled { opacity: 0.35; cursor: not-allowed; }
 button.primary {
   border-color: var(--accent);
@@ -105,7 +114,7 @@ select {
   font-size: 11px;
 }
 
-/* HUD bracket helper — adds 4 L-shaped corners to a relative element */
+/* HUD corner-bracket helper retained */
 .hud-brackets::before,
 .hud-brackets::after,
 .hud-brackets > .hud-corner-tl,
@@ -117,35 +126,16 @@ select {
   border-color: var(--accent);
   pointer-events: none;
 }
-.hud-brackets::before {
-  top: 0; left: 0;
-  border-top: 1px solid var(--accent);
-  border-left: 1px solid var(--accent);
-}
-.hud-brackets::after {
-  top: 0; right: 0;
-  border-top: 1px solid var(--accent);
-  border-right: 1px solid var(--accent);
-}
-.hud-brackets > .hud-corner-tl {
-  bottom: 0; left: 0;
-  border-bottom: 1px solid var(--accent);
-  border-left: 1px solid var(--accent);
-}
-.hud-brackets > .hud-corner-br {
-  bottom: 0; right: 0;
-  border-bottom: 1px solid var(--accent);
-  border-right: 1px solid var(--accent);
-}
 
-/* utility: tracked color */
+/* utility colors */
 .text-accent { color: var(--accent); }
-.text-cyan { color: var(--cyan); }
-.text-amber { color: var(--amber); }
-.text-red { color: var(--red); }
-.text-soft { color: var(--text-soft); }
-.text-muted { color: var(--text-muted); }
-.text-dim { color: var(--text-dim); }
+.text-cyan   { color: var(--white-d); }     /* alias kept for components — now warm white */
+.text-amber  { color: var(--amber); }
+.text-yellow { color: var(--yellow); }
+.text-red    { color: var(--red); }
+.text-soft   { color: var(--text-soft); }
+.text-muted  { color: var(--text-muted); }
+.text-dim    { color: var(--text-dim); }
 
 /* small caps tracked label */
 .label {
@@ -167,5 +157,7 @@ select {
 .row > .k { color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px; }
 .row > .v { color: var(--text); font-variant-numeric: tabular-nums; }
 .row > .v.accent { color: var(--accent); }
-.row > .v.cyan { color: var(--cyan); }
-.row > .v.amber { color: var(--amber); }
+.row > .v.cyan   { color: var(--white-d); }
+.row > .v.amber  { color: var(--amber); }
+.row > .v.yellow { color: var(--yellow); }
+.row > .v.red    { color: var(--red); }
