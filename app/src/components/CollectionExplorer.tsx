@@ -144,23 +144,22 @@ function CollectionRow({
   const noManifest = !downloaded && c.manifest_count === 0 && !c.archive_url
   const downloading = !!progress && progress.phase !== 'done' && progress.phase !== 'error'
   const errored = progress?.phase === 'error'
+  const sizeMB = c.download_size_bytes ? (c.download_size_bytes / (1024 * 1024)).toFixed(0) : null
 
   return (
-    <div>
+    <div className="border-b" style={{ borderColor: 'rgba(42,53,67,0.5)' }}>
       <div
-        className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/5 border-b"
+        className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/5"
         onClick={() => {
           if (downloaded) onToggle()
-          else if (!noManifest && !downloading) onDownload()
         }}
-        title={noManifest ? `${c.description} (no manifest seeded yet)` : c.description}
+        title={c.description}
         style={{
           background: isSelectedCollection ? 'rgba(0,229,255,0.08)' : 'transparent',
           borderLeftWidth: 3,
           borderLeftStyle: 'solid',
           borderLeftColor: isSelectedCollection ? 'var(--color-accent)' : 'transparent',
-          borderBottomColor: 'rgba(42,53,67,0.5)',
-          opacity: noManifest ? 0.45 : 1,
+          opacity: noManifest ? 0.55 : 1,
         }}
       >
         <span className="w-3 inline-block text-center text-xs" style={{ color: 'var(--color-muted)' }}>
@@ -170,54 +169,59 @@ function CollectionRow({
           <div className="truncate text-[12px] font-medium" style={{ color: 'var(--color-text)' }}>{c.name}</div>
           <div className="font-mono text-[10px] mt-0.5 tracking-[0.1em]" style={{ color: 'var(--color-muted)' }}>
             {REGION_LABEL[c.region]} · {DENSITY_LABEL[c.density]}
+            {sizeMB && !downloaded ? ` · ${sizeMB} MB` : ''}
           </div>
         </div>
-        {downloaded ? (
+        {downloaded && (
           <span className="font-mono text-[11px] tabular-nums px-2 py-0.5" style={{ color: 'var(--color-accent)', background: 'rgba(0,229,255,0.1)' }}>
             {c.downloaded_count}
           </span>
-        ) : noManifest ? (
-          <span className="font-mono text-[10px] italic" style={{ color: 'var(--color-muted)' }}>
-            empty
-          </span>
-        ) : (
-          <button
-            className="font-mono text-[11px] font-semibold px-2.5 py-1 border"
-            style={{
-              borderColor: downloading ? 'var(--color-warn)' : 'var(--color-accent)',
-              color: downloading ? '#000' : '#000',
-              background: downloading ? 'var(--color-warn)' : 'var(--color-accent)',
-            }}
-            onClick={(e) => {
-              e.stopPropagation()
-              onDownload()
-            }}
-            disabled={downloading}
-          >
-            {progress
-              ? progress.phase === 'done'
-                ? '✓'
-                : progress.phase === 'error'
-                  ? 'RETRY'
-                  : pct !== null
-                    ? `${pct}%`
-                    : progress.phase.toUpperCase()
-              : 'DOWNLOAD'}
-          </button>
         )}
       </div>
 
-      {(downloading || errored) && progress && (
-        <div
-          className="font-mono text-[10px] px-3 py-1.5 border-b truncate"
+      {/* Big, obvious download button row for undownloaded collections with a URL */}
+      {!downloaded && !noManifest && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!downloading) onDownload()
+          }}
+          disabled={downloading}
+          className="w-full font-mono text-[11px] font-semibold tracking-[0.15em] py-2 mt-0 mb-0 border-t"
           style={{
-            color: errored ? 'var(--color-bad)' : 'var(--color-warn)',
-            background: errored ? 'rgba(239,68,68,0.05)' : 'rgba(251,191,36,0.04)',
+            background: errored ? 'var(--color-bad)' : downloading ? 'var(--color-warn)' : 'var(--color-accent)',
+            color: '#000',
             borderColor: 'var(--color-line)',
+          }}
+        >
+          {progress
+            ? progress.phase === 'done'
+              ? '✓ DOWNLOADED'
+              : progress.phase === 'error'
+                ? 'RETRY DOWNLOAD'
+                : pct !== null
+                  ? `${progress.phase.toUpperCase()} · ${pct}%`
+                  : progress.phase.toUpperCase()
+            : `↓ DOWNLOAD ARCHIVE${sizeMB ? ` · ${sizeMB} MB` : ''}`}
+        </button>
+      )}
+
+      {!downloaded && noManifest && (
+        <div className="font-mono text-[10px] px-3 pb-2 italic" style={{ color: 'var(--color-muted)' }}>
+          no images seeded yet — coming soon
+        </div>
+      )}
+
+      {(downloading || errored) && progress?.message && (
+        <div
+          className="font-mono text-[10px] px-3 py-1.5 truncate"
+          style={{
+            color: errored ? 'var(--color-bad)' : 'var(--color-muted)',
+            background: errored ? 'rgba(239,68,68,0.08)' : 'transparent',
           }}
           title={progress.message}
         >
-          {errored ? `error: ${progress.message || 'unknown'}` : `${progress.phase}… ${progress.message || ''}`}
+          {errored ? `error: ${progress.message}` : progress.message}
         </div>
       )}
       {isExpanded && images && (
