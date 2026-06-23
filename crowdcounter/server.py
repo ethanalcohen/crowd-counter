@@ -4,13 +4,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
 
 from crowdcounter.core.inference import MODEL, infer_image
+from crowdcounter.videos import VideoInfo, list_videos, stream_video
 
 WEB_DIST = Path(__file__).resolve().parents[1] / "web" / "dist"
 
@@ -73,6 +74,19 @@ async def infer(image: UploadFile = File(...), threshold: float = 0.5) -> InferR
         count=r.count,
         image_size=r.image_size,
     )
+
+
+# ---------- video ----------
+
+@app.get("/api/videos", response_model=list[dict])
+def videos_index() -> list[dict]:
+    return [v.__dict__ for v in list_videos()]
+
+
+@app.websocket("/api/video/{video_id}/stream")
+async def video_stream(ws: WebSocket, video_id: str) -> None:
+    await ws.accept()
+    await stream_video(ws, video_id)
 
 
 # Serve the built Svelte app at /. During dev the Vite server runs on :5173;

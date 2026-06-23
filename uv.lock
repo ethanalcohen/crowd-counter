@@ -120,6 +120,7 @@ dependencies = [
     { name = "torch" },
     { name = "torchvision" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -136,6 +137,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.5" },
     { name = "torchvision", specifier = ">=0.20" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "websockets", specifier = ">=16.0" },
 ]
 
 [[package]]

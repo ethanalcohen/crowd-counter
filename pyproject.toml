@@ -16,6 +16,7 @@ dependencies = [
     "torch>=2.5",
     "torchvision>=0.20",
     "pywebview>=5.4",
+    "websockets>=16.0",
 ]
 
 [tool.uv]
