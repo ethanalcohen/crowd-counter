@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
+import type { CollectionImageEntry } from '../api/types'
 import type { EditablePoint } from '../canvas/AnnotationCanvas'
 import type { DensityResult } from '../canvas/density'
 import { useSelection } from '../state/selection'
@@ -18,10 +19,11 @@ interface Props {
 }
 
 export function Inspector(p: Props) {
-  const { collectionId, imageName } = useSelection()
+  const { collectionId, imageName, select, triggerRefresh } = useSelection()
   const [reviewed, setReviewed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [imageList, setImageList] = useState<CollectionImageEntry[]>([])
 
   const peak = p.density ? { x: p.density.peakX, y: p.density.peakY } : null
 
@@ -33,6 +35,14 @@ export function Inspector(p: Props) {
       if (a) setReviewed(a.reviewed)
     })
   }, [collectionId, imageName])
+
+  useEffect(() => {
+    if (!collectionId) return
+    api.listImages(collectionId).then(setImageList)
+  }, [collectionId])
+
+  const reviewedCount = imageList.filter((i) => i.reviewed).length
+  const totalCount = imageList.length
 
   const runInference = useCallback(async () => {
     if (!collectionId || !imageName) return
@@ -67,12 +77,49 @@ export function Inspector(p: Props) {
         })
         setReviewed(markReviewed)
         setStatusMsg(markReviewed ? 'Marked reviewed' : 'Saved')
+        triggerRefresh()
+        if (collectionId) {
+          api.listImages(collectionId).then(setImageList)
+        }
       } finally {
         setBusy(false)
       }
     },
-    [collectionId, imageName, p.filteredPoints, p.imageSize],
+    [collectionId, imageName, p.filteredPoints, p.imageSize, triggerRefresh],
   )
+
+  const approveAndNext = useCallback(async () => {
+    if (!collectionId || !imageName) return
+    setBusy(true)
+    try {
+      await api.putAnnotation(collectionId, imageName, {
+        points: p.filteredPoints.map((pt) => ({
+          x: pt.x, y: pt.y, confidence: pt.confidence, source: pt.source,
+        })),
+        image_size: p.imageSize,
+        reviewed: true,
+      })
+      triggerRefresh()
+
+      const freshList = await api.listImages(collectionId)
+      setImageList(freshList)
+
+      const currentIdx = freshList.findIndex((i) => i.name === imageName)
+      const nextUnreviewed =
+        freshList.slice(currentIdx + 1).find((i) => !i.reviewed) ??
+        freshList.slice(0, currentIdx).find((i) => !i.reviewed)
+
+      if (nextUnreviewed) {
+        select(collectionId, nextUnreviewed.name)
+        setStatusMsg(null)
+      } else {
+        setReviewed(true)
+        setStatusMsg('All images reviewed!')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }, [collectionId, imageName, p.filteredPoints, p.imageSize, select, triggerRefresh])
 
   return (
     <div className="h-full flex flex-col">
@@ -89,6 +136,29 @@ export function Inspector(p: Props) {
         </div>
       </div>
 
+      {totalCount > 0 && (
+        <div
+          className="px-3 py-2 border-b"
+          style={{ borderColor: 'var(--color-line)', background: 'var(--color-panel-2)' }}
+        >
+          <div className="flex justify-between font-mono text-[10px] tracking-[0.1em] mb-1.5">
+            <span style={{ color: 'var(--color-muted)' }}>REVIEW PROGRESS</span>
+            <span style={{ color: reviewedCount === totalCount ? 'var(--color-ok)' : 'var(--color-accent)' }}>
+              {reviewedCount} / {totalCount}
+            </span>
+          </div>
+          <div className="w-full h-1.5" style={{ background: 'var(--color-line)' }}>
+            <div
+              className="h-full transition-all"
+              style={{
+                width: `${(reviewedCount / totalCount) * 100}%`,
+                background: reviewedCount === totalCount ? 'var(--color-ok)' : 'var(--color-accent)',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="p-3 space-y-4 flex-1 overflow-auto">
         <Stat label="COUNT" value={p.filteredPoints.length.toString().padStart(3, '0')} />
         <Stat label="DENSEST · X,Y" value={peak ? `${peak.x},${peak.y}` : '—'} />
@@ -103,7 +173,7 @@ export function Inspector(p: Props) {
             opacity: !p.hasImage ? 0.5 : 1,
           }}
         >
-          {busy ? '· WORKING ·' : 'RUN INFERENCE'}
+          {busy ? '· WORKING ·' : 'RE-RUN INFERENCE'}
         </button>
 
         {statusMsg && (
@@ -140,31 +210,45 @@ export function Inspector(p: Props) {
         </div>
       </div>
 
-      <div className="p-3 border-t flex gap-2" style={{ borderColor: 'var(--color-line)' }}>
+      <div className="p-3 border-t space-y-2" style={{ borderColor: 'var(--color-line)' }}>
         <button
-          onClick={() => save(false)}
+          onClick={approveAndNext}
           disabled={busy || !p.hasImage}
-          className="flex-1 font-mono text-[11px] font-semibold tracking-[0.15em] px-3 py-2 border disabled:opacity-50"
-          style={{
-            borderColor: 'var(--color-line-strong)',
-            color: 'white',
-            background: 'var(--color-panel-2)',
-          }}
-        >
-          SAVE
-        </button>
-        <button
-          onClick={() => save(true)}
-          disabled={busy || !p.hasImage}
-          className="flex-1 font-mono text-[11px] font-semibold tracking-[0.15em] px-3 py-2 disabled:opacity-50"
+          className="w-full font-mono text-[12px] font-semibold tracking-[0.15em] px-3 py-2.5 disabled:opacity-50"
           style={{
             background: reviewed ? 'rgba(34,197,94,0.15)' : 'var(--color-ok)',
             color: reviewed ? 'var(--color-ok)' : '#000',
             border: '1px solid var(--color-ok)',
           }}
         >
-          {reviewed ? '✓ REVIEWED' : 'MARK REVIEWED'}
+          {reviewed ? '✓ APPROVED' : 'APPROVE & NEXT →'}
         </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => save(false)}
+            disabled={busy || !p.hasImage}
+            className="flex-1 font-mono text-[10px] font-semibold tracking-[0.15em] px-3 py-1.5 border disabled:opacity-50"
+            style={{
+              borderColor: 'var(--color-line-strong)',
+              color: 'var(--color-muted)',
+              background: 'var(--color-panel-2)',
+            }}
+          >
+            SAVE DRAFT
+          </button>
+          <button
+            onClick={() => save(true)}
+            disabled={busy || !p.hasImage}
+            className="flex-1 font-mono text-[10px] font-semibold tracking-[0.15em] px-3 py-1.5 border disabled:opacity-50"
+            style={{
+              borderColor: 'var(--color-line-strong)',
+              color: 'var(--color-muted)',
+              background: 'var(--color-panel-2)',
+            }}
+          >
+            APPROVE ONLY
+          </button>
+        </div>
       </div>
     </div>
   )

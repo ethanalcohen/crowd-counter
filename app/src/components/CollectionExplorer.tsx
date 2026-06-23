@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { CollectionImageEntry, CollectionSummary, DownloadProgress } from '../api/types'
+import type { AutoAnnotateProgress, CollectionImageEntry, CollectionSummary, DownloadProgress } from '../api/types'
 import { useSelection } from '../state/selection'
 
 const REGION_LABEL: Record<string, string> = {
@@ -14,7 +14,8 @@ export function CollectionExplorer() {
   const [collections, setCollections] = useState<CollectionSummary[]>([])
   const [images, setImages] = useState<Record<string, CollectionImageEntry[]>>({})
   const [progress, setProgress] = useState<Record<string, DownloadProgress>>({})
-  const { collectionId, imageName, expanded, select, toggleExpanded, setView } = useSelection()
+  const [autoProgress, setAutoProgress] = useState<Record<string, AutoAnnotateProgress>>({})
+  const { collectionId, imageName, expanded, refreshKey, select, toggleExpanded, setView } = useSelection()
 
   const refresh = async () => {
     try {
@@ -23,6 +24,9 @@ export function CollectionExplorer() {
       /* sidecar not ready */
     }
   }
+
+  const refreshImages = (id: string) =>
+    api.listImages(id).then((list) => setImages((m) => ({ ...m, [id]: list })))
 
   useEffect(() => {
     refresh()
@@ -33,10 +37,15 @@ export function CollectionExplorer() {
   useEffect(() => {
     expanded.forEach(async (id) => {
       if (images[id]) return
-      const list = await api.listImages(id)
-      setImages((m) => ({ ...m, [id]: list }))
+      await refreshImages(id)
     })
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (refreshKey === 0) return
+    expanded.forEach((id) => refreshImages(id))
+    refresh()
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const download = async (id: string) => {
     setProgress((p) => ({ ...p, [id]: { collection_id: id, phase: 'download', current: 0, total: 0, message: '' } }))
@@ -45,7 +54,26 @@ export function CollectionExplorer() {
       (e) => setProgress((p) => ({ ...p, [id]: e })),
       () => {
         refresh()
-        api.listImages(id).then((list) => setImages((m) => ({ ...m, [id]: list })))
+        refreshImages(id)
+      },
+    )
+  }
+
+  const autoAnnotate = async (id: string) => {
+    setAutoProgress((p) => ({ ...p, [id]: { phase: 'inferring', current: 0, total: 0 } }))
+    await api.autoAnnotate(
+      id,
+      (e) => setAutoProgress((p) => ({ ...p, [id]: e })),
+      () => {
+        refresh()
+        refreshImages(id)
+        setAutoProgress((p) => {
+          const next = { ...p }
+          if (next[id]?.phase === 'done') {
+            setTimeout(() => setAutoProgress((pp) => { const n = { ...pp }; delete n[id]; return n }), 3000)
+          }
+          return next
+        })
       },
     )
   }
@@ -60,12 +88,13 @@ export function CollectionExplorer() {
         {academic.map((c) => (
           <CollectionRow
             key={c.id} c={c}
-            images={images[c.id]} progress={progress[c.id]}
+            images={images[c.id]} progress={progress[c.id]} autoProgress={autoProgress[c.id]}
             isExpanded={expanded.has(c.id)}
             isSelectedCollection={collectionId === c.id}
             selectedImage={collectionId === c.id ? imageName : null}
             onToggle={() => toggleExpanded(c.id)}
             onDownload={() => download(c.id)}
+            onAutoAnnotate={() => autoAnnotate(c.id)}
             onSelectImage={(name) => { select(c.id, name); setView('annotate') }}
           />
         ))}
@@ -75,12 +104,13 @@ export function CollectionExplorer() {
         {regional.map((c) => (
           <CollectionRow
             key={c.id} c={c}
-            images={images[c.id]} progress={progress[c.id]}
+            images={images[c.id]} progress={progress[c.id]} autoProgress={autoProgress[c.id]}
             isExpanded={expanded.has(c.id)}
             isSelectedCollection={collectionId === c.id}
             selectedImage={collectionId === c.id ? imageName : null}
             onToggle={() => toggleExpanded(c.id)}
             onDownload={() => download(c.id)}
+            onAutoAnnotate={() => autoAnnotate(c.id)}
             onSelectImage={(name) => { select(c.id, name); setView('annotate') }}
           />
         ))}
@@ -91,12 +121,13 @@ export function CollectionExplorer() {
           {user.map((c) => (
             <CollectionRow
               key={c.id} c={c}
-              images={images[c.id]} progress={progress[c.id]}
+              images={images[c.id]} progress={progress[c.id]} autoProgress={autoProgress[c.id]}
               isExpanded={expanded.has(c.id)}
               isSelectedCollection={collectionId === c.id}
               selectedImage={collectionId === c.id ? imageName : null}
               onToggle={() => toggleExpanded(c.id)}
               onDownload={() => download(c.id)}
+              onAutoAnnotate={() => autoAnnotate(c.id)}
               onSelectImage={(name) => { select(c.id, name); setView('annotate') }}
             />
           ))}
@@ -125,17 +156,19 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function CollectionRow({
-  c, images, progress, isExpanded, isSelectedCollection, selectedImage,
-  onToggle, onDownload, onSelectImage,
+  c, images, progress, autoProgress, isExpanded, isSelectedCollection, selectedImage,
+  onToggle, onDownload, onAutoAnnotate, onSelectImage,
 }: {
   c: CollectionSummary
   images: CollectionImageEntry[] | undefined
   progress: DownloadProgress | undefined
+  autoProgress: AutoAnnotateProgress | undefined
   isExpanded: boolean
   isSelectedCollection: boolean
   selectedImage: string | null
   onToggle: () => void
   onDownload: () => void
+  onAutoAnnotate: () => void
   onSelectImage: (name: string) => void
 }) {
   const downloaded = c.downloaded_count > 0
@@ -145,6 +178,13 @@ function CollectionRow({
   const downloading = !!progress && progress.phase !== 'done' && progress.phase !== 'error'
   const errored = progress?.phase === 'error'
   const sizeMB = c.download_size_bytes ? (c.download_size_bytes / (1024 * 1024)).toFixed(0) : null
+
+  const autoRunning = !!autoProgress && autoProgress.phase === 'inferring'
+  const autoError = autoProgress?.phase === 'error'
+  const autoDone = autoProgress?.phase === 'done'
+  const autoPct = autoProgress && autoProgress.total > 0 ? Math.round((autoProgress.current / autoProgress.total) * 100) : null
+
+  const hasUnreviewed = downloaded && images && images.some((img) => !img.reviewed)
 
   return (
     <div className="border-b" style={{ borderColor: 'rgba(42,53,67,0.5)' }}>
@@ -179,7 +219,6 @@ function CollectionRow({
         )}
       </div>
 
-      {/* Big, obvious download button row for undownloaded collections with a URL */}
       {!downloaded && !noManifest && (
         <button
           onClick={(e) => {
@@ -204,6 +243,51 @@ function CollectionRow({
                   : progress.phase.toUpperCase()
             : `↓ DOWNLOAD ARCHIVE${sizeMB ? ` · ${sizeMB} MB` : ''}`}
         </button>
+      )}
+
+      {downloaded && hasUnreviewed && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!autoRunning) onAutoAnnotate()
+          }}
+          disabled={autoRunning}
+          className="w-full font-mono text-[11px] font-semibold tracking-[0.15em] py-2 mt-0 mb-0 border-t"
+          style={{
+            background: autoError ? 'var(--color-bad)' : autoRunning ? 'var(--color-warn)' : autoDone ? 'rgba(34,197,94,0.15)' : 'rgba(0,229,255,0.12)',
+            color: autoError ? '#fff' : autoRunning ? '#000' : autoDone ? 'var(--color-ok)' : 'var(--color-accent)',
+            borderColor: 'var(--color-line)',
+          }}
+        >
+          {autoProgress
+            ? autoProgress.phase === 'done'
+              ? `✓ ${autoProgress.annotated ?? 0} IMAGES PREDICTED`
+              : autoProgress.phase === 'error'
+                ? 'AUTO-ANNOTATE FAILED'
+                : autoPct !== null
+                  ? `INFERRING · ${autoPct}%`
+                  : 'STARTING…'
+            : '⚡ AUTO-ANNOTATE ALL'}
+        </button>
+      )}
+
+      {autoError && autoProgress?.message && (
+        <div
+          className="font-mono text-[10px] px-3 py-1.5 truncate"
+          style={{ color: 'var(--color-bad)', background: 'rgba(239,68,68,0.08)' }}
+          title={autoProgress.message}
+        >
+          {autoProgress.message}
+        </div>
+      )}
+
+      {autoRunning && autoProgress?.image_name && (
+        <div
+          className="font-mono text-[10px] px-3 py-1.5 truncate"
+          style={{ color: 'var(--color-muted)' }}
+        >
+          {autoProgress.image_name} → {autoProgress.count ?? '…'} pts
+        </div>
       )}
 
       {!downloaded && noManifest && (
@@ -233,6 +317,8 @@ function CollectionRow({
           ) : (
             images.map((img) => {
               const isSelected = isSelectedCollection && selectedImage === img.name
+              const statusIcon = img.reviewed ? '●' : img.annotated ? '◐' : '○'
+              const statusColor = img.reviewed ? 'var(--color-ok)' : img.annotated ? 'var(--color-warn)' : 'var(--color-muted)'
               return (
                 <div
                   key={img.name}
@@ -242,10 +328,9 @@ function CollectionRow({
                     color: isSelected ? 'var(--color-accent)' : 'var(--color-text)',
                   }}
                   onClick={() => onSelectImage(img.name)}
+                  title={img.reviewed ? 'Reviewed' : img.annotated ? 'Predicted — needs review' : 'No annotation'}
                 >
-                  <span style={{ color: img.annotated ? 'var(--color-accent)' : 'var(--color-muted)' }}>
-                    {img.annotated ? '●' : '○'}
-                  </span>
+                  <span style={{ color: statusColor }}>{statusIcon}</span>
                   <span className="flex-1 truncate">{img.name}</span>
                   {img.count !== null && (
                     <span className="tabular-nums" style={{ color: 'var(--color-muted)' }}>

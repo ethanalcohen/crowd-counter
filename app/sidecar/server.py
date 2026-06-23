@@ -126,6 +126,7 @@ def get_collection_summary(collection_id: str) -> CollectionSummary:
 class CollectionImageEntry(BaseModel):
     name: str
     annotated: bool
+    reviewed: bool = False
     count: int | None = None
 
 
@@ -146,7 +147,8 @@ def list_collection_images(collection_id: str) -> list[CollectionImageEntry]:
         out.append(
             CollectionImageEntry(
                 name=p.name,
-                annotated=ann is not None and ann.reviewed,
+                annotated=ann is not None,
+                reviewed=ann is not None and ann.reviewed,
                 count=len(ann.points) if ann else None,
             )
         )
@@ -177,6 +179,91 @@ async def ws_download(ws: WebSocket, collection_id: str) -> None:
         return
     except Exception as e:
         await ws.send_json({"phase": "error", "message": str(e)})
+    finally:
+        try:
+            await ws.close()
+        except RuntimeError:
+            pass
+
+
+# ---------- auto-annotate ----------
+
+@app.websocket("/collections/{collection_id}/auto-annotate")
+async def ws_auto_annotate(ws: WebSocket, collection_id: str) -> None:
+    await ws.accept()
+    c = get_collection(collection_id)
+    if c is None:
+        await ws.send_json({"phase": "error", "current": 0, "total": 0, "message": "collection not found"})
+        await ws.close()
+        return
+
+    if not MODEL.is_loaded() and not MODEL.load():
+        await ws.send_json({"phase": "error", "current": 0, "total": 0, "message": "model not loaded — place SHTechA.pth in weights directory"})
+        await ws.close()
+        return
+
+    root = collection_root(collection_id)
+    images_path = root / "images"
+    if not images_path.exists():
+        await ws.send_json({"phase": "error", "current": 0, "total": 0, "message": "no images downloaded"})
+        await ws.close()
+        return
+
+    image_files = sorted(
+        p for p in images_path.iterdir()
+        if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+    )
+
+    to_process = []
+    for p in image_files:
+        ann = load_annotation(root, p.name)
+        if ann is None or not ann.reviewed:
+            to_process.append(p)
+
+    total = len(to_process)
+    if total == 0:
+        await ws.send_json({"phase": "done", "current": 0, "total": 0, "annotated": 0, "skipped": 0})
+        await ws.close()
+        return
+
+    loop = asyncio.get_event_loop()
+    annotated_count = 0
+
+    try:
+        for i, p in enumerate(to_process):
+            pil = Image.open(p).convert("RGB")
+            result = await loop.run_in_executor(None, _run_inference, pil, 0.5)
+
+            ann = Annotation(
+                image_name=p.name,
+                points=[AnnotationPoint(x=pt.x, y=pt.y, confidence=pt.confidence, source="model") for pt in result.points],
+                image_size=result.image_size,
+                region=c.region,
+                density=c.density,
+                reviewed=False,
+            )
+            save_annotation(root, ann)
+            annotated_count += 1
+
+            await ws.send_json({
+                "phase": "inferring",
+                "current": i + 1,
+                "total": total,
+                "image_name": p.name,
+                "count": result.count,
+            })
+
+        await ws.send_json({
+            "phase": "done",
+            "current": total,
+            "total": total,
+            "annotated": annotated_count,
+            "skipped": len(image_files) - total,
+        })
+    except WebSocketDisconnect:
+        return
+    except Exception as e:
+        await ws.send_json({"phase": "error", "current": 0, "total": total, "message": str(e)})
     finally:
         try:
             await ws.close()

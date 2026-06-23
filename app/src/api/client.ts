@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   Annotation,
+  AutoAnnotateProgress,
   CollectionImageEntry,
   CollectionSummary,
   DownloadProgress,
@@ -86,6 +87,23 @@ export const api = {
     ws.onmessage = (ev) => {
       try {
         onProgress(JSON.parse(ev.data) as DownloadProgress)
+      } catch {
+        /* ignore */
+      }
+    }
+    ws.onclose = () => onClose?.()
+    return ws
+  },
+
+  autoAnnotate: async (
+    id: string,
+    onProgress: (e: AutoAnnotateProgress) => void,
+    onClose?: () => void,
+  ): Promise<WebSocket> => {
+    const ws = new WebSocket(`ws://127.0.0.1:${await port()}/collections/${id}/auto-annotate`)
+    ws.onmessage = (ev) => {
+      try {
+        onProgress(JSON.parse(ev.data) as AutoAnnotateProgress)
       } catch {
         /* ignore */
       }

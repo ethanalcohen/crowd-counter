@@ -13,12 +13,14 @@ export function AnnotateView() {
   const [history, setHistory] = useState<EditablePoint[][]>([])
   const [showHeatmap, setShowHeatmap] = useState(true)
   const [confidence, setConfidence] = useState(0)
+  const [autoInferring, setAutoInferring] = useState(false)
 
   useEffect(() => {
     setPoints([])
     setHistory([])
     setImageUrl(null)
     setImageSize([0, 0])
+    setAutoInferring(false)
     if (!collectionId || !imageName) return
 
     let cancelled = false
@@ -42,6 +44,20 @@ export function AnnotateView() {
           })),
         )
         setImageSize(ann.image_size)
+      } else {
+        setAutoInferring(true)
+        try {
+          const r = await api.inferCollectionImage(collectionId!, imageName!)
+          if (cancelled) return
+          setPoints(
+            r.points.map((pt) => ({ x: pt.x, y: pt.y, source: 'model' as const, confidence: pt.confidence })),
+          )
+          setImageSize(r.image_size)
+        } catch {
+          /* model may not be loaded yet */
+        } finally {
+          if (!cancelled) setAutoInferring(false)
+        }
       }
     }
     load()
@@ -94,6 +110,19 @@ export function AnnotateView() {
           />
         ) : (
           <EmptyCanvas />
+        )}
+        {autoInferring && (
+          <div
+            className="absolute top-3 left-1/2 -translate-x-1/2 font-mono text-[11px] tracking-[0.15em] px-4 py-2"
+            style={{
+              background: 'rgba(251,191,36,0.9)',
+              color: '#000',
+              fontWeight: 600,
+              zIndex: 10,
+            }}
+          >
+            RUNNING AUTO-INFERENCE…
+          </div>
         )}
       </section>
 

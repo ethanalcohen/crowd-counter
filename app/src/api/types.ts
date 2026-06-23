@@ -19,6 +19,7 @@ export interface CollectionSummary {
 export interface CollectionImageEntry {
   name: string
   annotated: boolean
+  reviewed: boolean
   count: number | null
 }
 
@@ -57,4 +58,15 @@ export interface DownloadProgress {
   current: number
   total: number
   message: string
+}
+
+export interface AutoAnnotateProgress {
+  phase: 'inferring' | 'done' | 'error'
+  current: number
+  total: number
+  image_name?: string
+  count?: number
+  annotated?: number
+  skipped?: number
+  message?: string
 }
