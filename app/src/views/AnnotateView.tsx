@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnnotationCanvas, type EditablePoint } from '../canvas/AnnotationCanvas'
+import { computeDensity } from '../canvas/density'
 import { Inspector } from '../components/Inspector'
 import { useSelection } from '../state/selection'
 import { api } from '../api/client'
@@ -67,17 +68,28 @@ export function AnnotateView() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const filtered = useMemo(
+    () => points.filter((p) => p.confidence >= confidence),
+    [points, confidence],
+  )
+
+  // single source of truth for heatmap / peak
+  const density = useMemo(() => {
+    if (filtered.length === 0 || imageSize[0] === 0) return null
+    return computeDensity(filtered, imageSize[0], imageSize[1])
+  }, [filtered, imageSize])
+
   const hasImage = imageUrl !== null
-  const filtered = points.filter((p) => p.confidence >= confidence)
 
   return (
     <>
-      <section className="flex-1 min-w-0 relative" style={{ background: '#0a0e13' }}>
+      <section className="flex-1 min-w-0 relative" style={{ background: '#06090d' }}>
         {hasImage ? (
           <AnnotationCanvas
             imageUrl={imageUrl!}
             points={filtered}
             onChange={setPointsWithHistory}
+            density={density}
             showHeatmap={showHeatmap}
           />
         ) : (
@@ -85,22 +97,23 @@ export function AnnotateView() {
         )}
       </section>
 
-      {hasImage && (
-        <aside
-          className="w-72 border-l flex-shrink-0"
-          style={{ borderColor: 'var(--color-line)', background: 'var(--color-panel)' }}
-        >
-          <Inspector
-            points={points}
-            setPoints={setPointsWithHistory}
-            imageSize={imageSize}
-            showHeatmap={showHeatmap}
-            setShowHeatmap={setShowHeatmap}
-            confidence={confidence}
-            setConfidence={setConfidence}
-          />
-        </aside>
-      )}
+      <aside
+        className="w-80 border-l flex-shrink-0"
+        style={{ borderColor: 'var(--color-line)', background: 'var(--color-panel)' }}
+      >
+        <Inspector
+          points={points}
+          filteredPoints={filtered}
+          setPoints={setPointsWithHistory}
+          imageSize={imageSize}
+          showHeatmap={showHeatmap}
+          setShowHeatmap={setShowHeatmap}
+          confidence={confidence}
+          setConfidence={setConfidence}
+          density={density}
+          hasImage={hasImage}
+        />
+      </aside>
     </>
   )
 }
@@ -118,10 +131,13 @@ function EmptyCanvas() {
         }}
       />
       <div
-        className="absolute inset-0 flex items-center justify-center font-mono text-[11px] uppercase tracking-widest"
+        className="absolute inset-0 flex flex-col items-center justify-center gap-3"
         style={{ color: 'var(--color-muted)' }}
       >
-        Select an image from the sidebar
+        <div className="font-mono text-[11px] uppercase tracking-[0.25em]">No image loaded</div>
+        <div className="font-mono text-[10px]" style={{ color: 'var(--color-line-strong)' }}>
+          → DOWNLOAD A COLLECTION FROM THE SIDEBAR, THEN CLICK AN IMAGE
+        </div>
       </div>
     </>
   )

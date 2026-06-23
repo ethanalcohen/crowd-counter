@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Circle, Image as KImage, Layer, Stage } from 'react-konva'
 import type Konva from 'konva'
-import { computeDensity } from './density'
+import type { DensityResult } from './density'
 
 export interface EditablePoint {
   x: number
@@ -14,10 +14,11 @@ interface Props {
   imageUrl: string
   points: EditablePoint[]
   onChange: (next: EditablePoint[]) => void
+  density: DensityResult | null   // computed by parent (one source of truth)
   showHeatmap: boolean
 }
 
-export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Props) {
+export function AnnotationCanvas({ imageUrl, points, onChange, density, showHeatmap }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
   const [img, setImg] = useState<HTMLImageElement | null>(null)
@@ -31,6 +32,7 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
     i.crossOrigin = 'anonymous'
     i.onload = () => setImg(i)
     i.src = imageUrl
+    return () => { i.onload = null }
   }, [imageUrl])
 
   useEffect(() => {
@@ -43,7 +45,6 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
     return () => ro.disconnect()
   }, [])
 
-  // fit-to-view when image or container size changes
   useEffect(() => {
     if (!img || container.w === 0) return
     const s = Math.min(container.w / img.width, container.h / img.height) * 0.95
@@ -54,7 +55,6 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
     })
   }, [img, container])
 
-  // space-drag panning
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.code === 'Space') setSpaceDown(true)
@@ -70,26 +70,17 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
     }
   }, [])
 
-  const density = useMemo(() => {
-    if (!img || !showHeatmap) return null
-    return computeDensity(points, img.width, img.height)
-  }, [points, img, showHeatmap])
-
+  // build heatmap canvas only when density changes
   const heatmapCanvas = useMemo(() => {
     if (!density) return null
     const c = document.createElement('canvas')
     c.width = density.width
     c.height = density.height
-    const ctx = c.getContext('2d')!
-    ctx.putImageData(density.imageData, 0, 0)
+    c.getContext('2d')!.putImageData(density.imageData, 0, 0)
     return c
   }, [density])
 
-  const peak = useMemo(() => {
-    if (!img || points.length === 0) return null
-    const d = computeDensity(points, img.width, img.height)
-    return { x: d.peakX, y: d.peakY }
-  }, [points, img])
+  const peak = density && points.length > 0 ? { x: density.peakX, y: density.peakY } : null
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
     e.evt.preventDefault()
@@ -112,7 +103,6 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
 
   function handleStageClick(e: Konva.KonvaEventObject<MouseEvent>) {
     if (spaceDown) return
-    // if a dot was clicked, its onClick handles removal — bail
     if (e.target !== e.currentTarget && e.target.name() === 'dot') return
     if (!img) return
     const stage = stageRef.current
@@ -161,11 +151,11 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
       >
         <Layer listening={false}>
           {img && <KImage image={img} />}
-          {heatmapCanvas && (
+          {showHeatmap && heatmapCanvas && img && (
             <KImage
               image={heatmapCanvas}
-              width={img!.width}
-              height={img!.height}
+              width={img.width}
+              height={img.height}
               opacity={0.65}
             />
           )}
@@ -178,8 +168,8 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
               x={p.x}
               y={p.y}
               radius={6 / scale}
-              fill={p.source === 'user' ? '#22c55e' : '#ef4444'}
-              stroke="white"
+              fill={p.source === 'user' ? '#22c55e' : '#00e5ff'}
+              stroke="black"
               strokeWidth={1.5 / scale}
               draggable
               onClick={(e) => {
@@ -194,16 +184,16 @@ export function AnnotationCanvas({ imageUrl, points, onChange, showHeatmap }: Pr
               <Circle
                 x={peak.x}
                 y={peak.y}
-                radius={14 / scale}
-                stroke="#ffffff"
+                radius={18 / scale}
+                stroke="#00e5ff"
                 strokeWidth={2 / scale}
                 listening={false}
               />
               <Circle
                 x={peak.x}
                 y={peak.y}
-                radius={3 / scale}
-                fill="#ffffff"
+                radius={4 / scale}
+                fill="#00e5ff"
                 listening={false}
               />
             </>

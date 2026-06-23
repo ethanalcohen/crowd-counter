@@ -26,11 +26,11 @@ export function Topbar() {
         setHealth(h.status === 'ok' ? 'ok' : 'error')
         setModelLoaded(h.model_loaded)
         setDevice(h.device)
-        timer = setTimeout(poll, 5000)
+        timer = setTimeout(poll, modelLoaded ? 15000 : 2000)
       } catch {
         if (cancelled) return
         setHealth('connecting')
-        timer = setTimeout(poll, 800)
+        timer = setTimeout(poll, 1500)
       }
     }
     poll()
@@ -38,38 +38,42 @@ export function Topbar() {
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [])
+  }, [modelLoaded])
 
   const pill =
     health === 'ok'
       ? modelLoaded
         ? { color: '#00e5ff', text: `P2PNET · ${device?.toUpperCase() ?? 'READY'}` }
-        : { color: '#fbbf24', text: 'MODEL · UNLOADED' }
+        : { color: '#fbbf24', text: 'LOADING MODEL…' }
       : health === 'error'
         ? { color: '#ef4444', text: 'SIDECAR · ERROR' }
-        : { color: '#6b7785', text: 'SIDECAR · BOOTING' }
+        : { color: '#8b95a3', text: 'CONNECTING…' }
 
   return (
     <header
-      className="flex items-center justify-between px-4 h-10 border-b"
+      className="flex items-center justify-between border-b"
       style={{
+        height: 44,
         borderColor: 'var(--color-line)',
         background: 'var(--color-panel)',
         WebkitAppRegion: 'drag',
       } as React.CSSProperties}
     >
-      <div className="flex items-center gap-6 pl-16" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        <span className="font-mono text-xs tracking-[0.2em] text-white">CROWD/COUNTER</span>
-        <nav className="flex gap-1">
+      <div className="flex items-center gap-6 h-full pl-20" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <span className="font-mono text-[12px] font-semibold tracking-[0.25em]" style={{ color: 'var(--color-accent)' }}>
+          CROWD/COUNTER
+        </span>
+        <nav className="flex h-full">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setView(t.id)}
-              className="font-mono text-[11px] tracking-[0.15em] px-3 py-1 rounded-sm transition"
+              className="font-mono text-[12px] font-semibold tracking-[0.2em] px-5 h-full"
               style={{
-                color: view === t.id ? '#00e5ff' : 'var(--color-muted)',
-                background: view === t.id ? 'rgba(0,229,255,0.08)' : 'transparent',
-                borderBottom: view === t.id ? '1px solid #00e5ff' : '1px solid transparent',
+                color: view === t.id ? '#000' : 'var(--color-text)',
+                background: view === t.id ? 'var(--color-accent)' : 'transparent',
+                border: 'none',
+                borderRight: '1px solid var(--color-line)',
               }}
             >
               {t.label}
@@ -78,16 +82,17 @@ export function Topbar() {
         </nav>
       </div>
       <div
-        className="inline-flex items-center gap-2 font-mono text-[10px] tracking-widest px-2.5 py-1 border rounded-sm"
+        className="inline-flex items-center gap-2 font-mono text-[11px] tracking-widest px-3 py-1.5 border mr-3"
         style={{
           color: pill.color,
-          borderColor: 'var(--color-line)',
+          borderColor: pill.color,
+          background: 'rgba(0,229,255,0.05)',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         <span
-          className="w-1.5 h-1.5"
-          style={{ background: pill.color, boxShadow: `0 0 6px ${pill.color}` }}
+          className="w-2 h-2 rounded-full"
+          style={{ background: pill.color, boxShadow: `0 0 8px ${pill.color}` }}
         />
         {pill.text}
       </div>

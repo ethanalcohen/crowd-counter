@@ -1,17 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
-@theme {
-  --color-bg: #0a0e13;
-  --color-panel: #0f141b;
-  --color-panel-2: #131922;
-  --color-line: #1f2a36;
-  --color-line-strong: #2c3a4a;
-  --color-text: #d1d5db;
-  --color-muted: #6b7785;
+:root {
+  --color-bg: #06090d;
+  --color-panel: #11161f;
+  --color-panel-2: #161d28;
+  --color-line: #2a3543;
+  --color-line-strong: #3d4a5a;
+  --color-text: #e8ecf0;
+  --color-muted: #8b95a3;
   --color-accent: #00e5ff;
   --color-warn: #fbbf24;
   --color-bad: #ef4444;
+  --color-ok: #22c55e;
 }
 
 html, body, #root { height: 100%; margin: 0; }
@@ -21,49 +22,35 @@ body {
   font-family: 'Inter', -apple-system, system-ui, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
 .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
 
-/* subtle scanline / global texture */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    180deg,
-    transparent 0px,
-    transparent 3px,
-    rgba(255, 255, 255, 0.012) 3px,
-    rgba(255, 255, 255, 0.012) 4px
-  );
-  z-index: 9999;
-}
-
-/* range input — cyan accent */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   height: 2px;
   background: var(--color-line-strong);
   outline: none;
+  border-radius: 1px;
 }
 input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   background: var(--color-accent);
   cursor: pointer;
-  box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
 }
 
-/* scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-line-strong); }
+::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
 
-button { font-family: inherit; }
-select { font-family: inherit; }
+button { font-family: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+select { font-family: inherit; cursor: pointer; }

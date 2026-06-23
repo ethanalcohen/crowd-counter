@@ -26,7 +26,7 @@ export function CollectionExplorer() {
 
   useEffect(() => {
     refresh()
-    const t = setInterval(refresh, 5000)
+    const t = setInterval(refresh, 15000)
     return () => clearInterval(t)
   }, [])
 
@@ -108,10 +108,14 @@ export function CollectionExplorer() {
 
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="py-1">
+    <div>
       <div
-        className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] border-b"
-        style={{ color: 'var(--color-muted)', borderColor: 'var(--color-line)' }}
+        className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] border-b border-t"
+        style={{
+          color: 'var(--color-accent)',
+          borderColor: 'var(--color-line)',
+          background: 'var(--color-panel-2)',
+        }}
       >
         {title}
       </div>
@@ -143,40 +147,45 @@ function CollectionRow({
   return (
     <div>
       <div
-        className="group flex items-center gap-1 px-2 py-1 cursor-pointer"
+        className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/5 border-b"
         onClick={() => {
           if (downloaded) onToggle()
           else if (!noManifest && !downloading) onDownload()
         }}
         title={noManifest ? `${c.description} (no manifest seeded yet)` : c.description}
         style={{
-          background: isSelectedCollection ? 'rgba(0,229,255,0.04)' : 'transparent',
-          borderLeft: isSelectedCollection ? '2px solid var(--color-accent)' : '2px solid transparent',
-          opacity: noManifest ? 0.5 : 1,
+          background: isSelectedCollection ? 'rgba(0,229,255,0.08)' : 'transparent',
+          borderLeftWidth: 3,
+          borderLeftStyle: 'solid',
+          borderLeftColor: isSelectedCollection ? 'var(--color-accent)' : 'transparent',
+          borderBottomColor: 'rgba(42,53,67,0.5)',
+          opacity: noManifest ? 0.45 : 1,
         }}
       >
-        <span className="w-3 inline-block text-center" style={{ color: 'var(--color-muted)' }}>
+        <span className="w-3 inline-block text-center text-xs" style={{ color: 'var(--color-muted)' }}>
           {downloaded ? (isExpanded ? '▾' : '▸') : '·'}
         </span>
-        <span className="flex-1 truncate" style={{ color: 'var(--color-text)' }}>{c.name}</span>
-        <span className="text-[9px] tracking-[0.1em]" style={{ color: 'var(--color-muted)' }}>
-          {REGION_LABEL[c.region]}·{DENSITY_LABEL[c.density]}
-        </span>
+        <div className="flex-1 min-w-0">
+          <div className="truncate text-[12px] font-medium" style={{ color: 'var(--color-text)' }}>{c.name}</div>
+          <div className="font-mono text-[10px] mt-0.5 tracking-[0.1em]" style={{ color: 'var(--color-muted)' }}>
+            {REGION_LABEL[c.region]} · {DENSITY_LABEL[c.density]}
+          </div>
+        </div>
         {downloaded ? (
-          <span className="text-[9px] ml-1 tabular-nums" style={{ color: 'var(--color-accent)' }}>
+          <span className="font-mono text-[11px] tabular-nums px-2 py-0.5" style={{ color: 'var(--color-accent)', background: 'rgba(0,229,255,0.1)' }}>
             {c.downloaded_count}
           </span>
         ) : noManifest ? (
-          <span className="text-[9px] ml-1 italic" style={{ color: 'var(--color-muted)' }}>
+          <span className="font-mono text-[10px] italic" style={{ color: 'var(--color-muted)' }}>
             empty
           </span>
         ) : (
           <button
-            className="text-[9px] px-1.5 py-0.5 ml-1 border"
+            className="font-mono text-[11px] font-semibold px-2.5 py-1 border"
             style={{
               borderColor: downloading ? 'var(--color-warn)' : 'var(--color-accent)',
-              color: downloading ? 'var(--color-warn)' : 'var(--color-accent)',
-              background: downloading ? 'rgba(251,191,36,0.06)' : 'rgba(0,229,255,0.06)',
+              color: downloading ? '#000' : '#000',
+              background: downloading ? 'var(--color-warn)' : 'var(--color-accent)',
             }}
             onClick={(e) => {
               e.stopPropagation()
@@ -192,7 +201,7 @@ function CollectionRow({
                   : pct !== null
                     ? `${pct}%`
                     : progress.phase.toUpperCase()
-              : 'PULL'}
+              : 'DOWNLOAD'}
           </button>
         )}
       </div>
@@ -209,15 +218,15 @@ function CollectionRow({
               return (
                 <div
                   key={img.name}
-                  className="flex items-center gap-2 pl-7 pr-2 py-0.5 cursor-pointer text-[10px]"
+                  className="flex items-center gap-2 pl-9 pr-3 py-1 cursor-pointer text-[11px] font-mono hover:bg-white/5"
                   style={{
-                    background: isSelected ? 'rgba(0,229,255,0.08)' : 'transparent',
+                    background: isSelected ? 'rgba(0,229,255,0.12)' : 'transparent',
                     color: isSelected ? 'var(--color-accent)' : 'var(--color-text)',
                   }}
                   onClick={() => onSelectImage(img.name)}
                 >
                   <span style={{ color: img.annotated ? 'var(--color-accent)' : 'var(--color-muted)' }}>
-                    {img.annotated ? '■' : '□'}
+                    {img.annotated ? '●' : '○'}
                   </span>
                   <span className="flex-1 truncate">{img.name}</span>
                   {img.count !== null && (
