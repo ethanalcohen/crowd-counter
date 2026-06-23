@@ -1,0 +1,117 @@
+{
+  "collections": [
+    {
+      "id": "shanghaitech-a",
+      "name": "ShanghaiTech Part A",
+      "kind": "academic",
+      "region": "global",
+      "density": "mixed",
+      "description": "Dense crowd scenes from the web. 482 images, ~501 people/image average.",
+      "pre_annotated": true,
+      "download_size_bytes": 304087040,
+      "archive_url": "https://huggingface.co/datasets/HuggingFaceM4/ShanghaiTech/resolve/main/part_A.zip",
+      "archive_format": "zip",
+      "images": []
+    },
+    {
+      "id": "shanghaitech-b",
+      "name": "ShanghaiTech Part B",
+      "kind": "academic",
+      "region": "global",
+      "density": "mixed",
+      "description": "Sparser street scenes from Shanghai. 716 images, ~123 people/image average.",
+      "pre_annotated": true,
+      "download_size_bytes": 332398592,
+      "archive_url": "https://huggingface.co/datasets/HuggingFaceM4/ShanghaiTech/resolve/main/part_B.zip",
+      "archive_format": "zip",
+      "images": []
+    },
+    {
+      "id": "ucf-qnrf",
+      "name": "UCF-QNRF",
+      "kind": "academic",
+      "region": "global",
+      "density": "mixed",
+      "description": "Very dense crowds from concerts, hajj, marathons. 1535 images, up to 12k people/image.",
+      "pre_annotated": true,
+      "download_size_bytes": 4509715660,
+      "archive_url": "https://www.crcv.ucf.edu/data/ucf-qnrf/UCF-QNRF_ECCV18.zip",
+      "archive_format": "zip",
+      "images": []
+    },
+    {
+      "id": "nwpu-crowd",
+      "name": "NWPU-Crowd",
+      "kind": "academic",
+      "region": "global",
+      "density": "mixed",
+      "description": "Large-scale, varied scenes. 5109 images, count range 0 to 20033.",
+      "pre_annotated": true,
+      "download_size_bytes": 5368709120,
+      "archive_url": null,
+      "archive_format": "zip",
+      "images": []
+    },
+
+    {
+      "id": "na-urban",
+      "name": "North America — Urban",
+      "kind": "regional",
+      "region": "na",
+      "density": "urban",
+      "description": "City crowds: streets, plazas, transit, events.",
+      "pre_annotated": false,
+      "images": []
+    },
+    {
+      "id": "na-rural",
+      "name": "North America — Rural",
+      "kind": "regional",
+      "region": "na",
+      "density": "rural",
+      "description": "Small towns, fairs, outdoor gatherings, parks.",
+      "pre_annotated": false,
+      "images": []
+    },
+    {
+      "id": "me-urban",
+      "name": "Middle East — Urban",
+      "kind": "regional",
+      "region": "me",
+      "density": "urban",
+      "description": "Dense markets, mosques, city squares.",
+      "pre_annotated": false,
+      "images": []
+    },
+    {
+      "id": "me-rural",
+      "name": "Middle East — Rural",
+      "kind": "regional",
+      "region": "me",
+      "density": "rural",
+      "description": "Villages, open-air gatherings, religious processions.",
+      "pre_annotated": false,
+      "images": []
+    },
+    {
+      "id": "ea-urban",
+      "name": "East Asia — Urban",
+      "kind": "regional",
+      "region": "ea",
+      "density": "urban",
+      "description": "Tokyo, Shanghai, Seoul — dense pedestrian flows, transit stations.",
+      "pre_annotated": false,
+      "images": []
+    },
+    {
+      "id": "ea-rural",
+      "name": "East Asia — Rural",
+      "kind": "regional",
+      "region": "ea",
+      "density": "rural",
+      "description": "Rural festivals, temples, markets.",
+      "pre_annotated": false,
+      "images": []
+    }
+  ]
+}
