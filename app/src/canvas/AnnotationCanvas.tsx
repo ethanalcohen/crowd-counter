@@ -28,11 +28,12 @@ export function AnnotationCanvas({ imageUrl, points, onChange, density, showHeat
   const [spaceDown, setSpaceDown] = useState(false)
 
   useEffect(() => {
+    setImg(null)
     const i = new window.Image()
-    i.crossOrigin = 'anonymous'
     i.onload = () => setImg(i)
+    i.onerror = () => console.error('Failed to load image:', imageUrl)
     i.src = imageUrl
-    return () => { i.onload = null }
+    return () => { i.onload = null; i.onerror = null }
   }, [imageUrl])
 
   useEffect(() => {
