@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
 from pathlib import Path
 
 from core.dataset import CollectionImage, CollectionManifest
@@ -9,7 +8,6 @@ from core.dataset import CollectionImage, CollectionManifest
 REGISTRY_PATH = Path(__file__).resolve().parents[1] / "data" / "collections.json"
 
 
-@lru_cache(maxsize=1)
 def load_registry() -> list[CollectionManifest]:
     raw = json.loads(REGISTRY_PATH.read_text())
     out: list[CollectionManifest] = []

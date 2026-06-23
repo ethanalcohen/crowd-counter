@@ -143,6 +143,7 @@ function CollectionRow({
 
   const noManifest = !downloaded && c.manifest_count === 0 && !c.archive_url
   const downloading = !!progress && progress.phase !== 'done' && progress.phase !== 'error'
+  const errored = progress?.phase === 'error'
 
   return (
     <div>
@@ -206,6 +207,19 @@ function CollectionRow({
         )}
       </div>
 
+      {(downloading || errored) && progress && (
+        <div
+          className="font-mono text-[10px] px-3 py-1.5 border-b truncate"
+          style={{
+            color: errored ? 'var(--color-bad)' : 'var(--color-warn)',
+            background: errored ? 'rgba(239,68,68,0.05)' : 'rgba(251,191,36,0.04)',
+            borderColor: 'var(--color-line)',
+          }}
+          title={progress.message}
+        >
+          {errored ? `error: ${progress.message || 'unknown'}` : `${progress.phase}… ${progress.message || ''}`}
+        </div>
+      )}
       {isExpanded && images && (
         <div>
           {images.length === 0 ? (
