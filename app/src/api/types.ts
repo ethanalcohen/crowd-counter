@@ -14,6 +14,13 @@ export interface CollectionSummary {
   manifest_count: number
   downloaded_count: number
   annotated_count: number
+  reviewed_count: number
+}
+
+export interface AutoAnnotateImageResult {
+  image_name: string
+  count: number
+  image_size: [number, number]
 }
 
 export interface CollectionImageEntry {

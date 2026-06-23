@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { CollectionImageEntry } from '../api/types'
+import type { CollectionSummary } from '../api/types'
 import type { EditablePoint } from '../canvas/AnnotationCanvas'
 import type { DensityResult } from '../canvas/density'
 import { useSelection } from '../state/selection'
@@ -23,7 +23,7 @@ export function Inspector(p: Props) {
   const [reviewed, setReviewed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
-  const [imageList, setImageList] = useState<CollectionImageEntry[]>([])
+  const [summary, setSummary] = useState<CollectionSummary | null>(null)
 
   const peak = p.density ? { x: p.density.peakX, y: p.density.peakY } : null
 
@@ -38,11 +38,11 @@ export function Inspector(p: Props) {
 
   useEffect(() => {
     if (!collectionId) return
-    api.listImages(collectionId).then(setImageList)
+    api.getCollection(collectionId).then(setSummary)
   }, [collectionId])
 
-  const reviewedCount = imageList.filter((i) => i.reviewed).length
-  const totalCount = imageList.length
+  const reviewedCount = summary?.reviewed_count ?? 0
+  const totalCount = summary?.downloaded_count ?? 0
 
   const runInference = useCallback(async () => {
     if (!collectionId || !imageName) return
@@ -79,7 +79,7 @@ export function Inspector(p: Props) {
         setStatusMsg(markReviewed ? 'Marked reviewed' : 'Saved')
         triggerRefresh()
         if (collectionId) {
-          api.listImages(collectionId).then(setImageList)
+          api.getCollection(collectionId).then(setSummary)
         }
       } finally {
         setBusy(false)
@@ -100,10 +100,9 @@ export function Inspector(p: Props) {
         reviewed: true,
       })
       triggerRefresh()
+      api.getCollection(collectionId).then(setSummary)
 
       const freshList = await api.listImages(collectionId)
-      setImageList(freshList)
-
       const currentIdx = freshList.findIndex((i) => i.name === imageName)
       const nextUnreviewed =
         freshList.slice(currentIdx + 1).find((i) => !i.reviewed) ??

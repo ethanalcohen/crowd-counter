@@ -87,6 +87,7 @@ class CollectionSummary(BaseModel):
     manifest_count: int
     downloaded_count: int
     annotated_count: int
+    reviewed_count: int = 0
 
 
 def _summary(c) -> CollectionSummary:
@@ -94,7 +95,17 @@ def _summary(c) -> CollectionSummary:
     images = list((root / "images").iterdir()) if (root / "images").exists() else []
     image_files = [p for p in images if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}]
     ann_dir = root / "annotations"
-    annotated = list(ann_dir.glob("*.json")) if ann_dir.exists() else []
+    annotated = 0
+    reviewed = 0
+    if ann_dir.exists():
+        for ann_path in ann_dir.glob("*.json"):
+            annotated += 1
+            try:
+                data = json.loads(ann_path.read_text())
+                if data.get("reviewed", False):
+                    reviewed += 1
+            except (json.JSONDecodeError, OSError):
+                pass
     return CollectionSummary(
         id=c.id,
         name=c.name,
@@ -106,7 +117,8 @@ def _summary(c) -> CollectionSummary:
         download_size_bytes=c.download_size_bytes,
         manifest_count=len(c.images),
         downloaded_count=len(image_files),
-        annotated_count=len(annotated),
+        annotated_count=annotated,
+        reviewed_count=reviewed,
     )
 
 
@@ -131,7 +143,7 @@ class CollectionImageEntry(BaseModel):
 
 
 @app.get("/collections/{collection_id}/images", response_model=list[CollectionImageEntry])
-def list_collection_images(collection_id: str) -> list[CollectionImageEntry]:
+def list_collection_images(collection_id: str, status: str | None = None) -> list[CollectionImageEntry]:
     c = get_collection(collection_id)
     if c is None:
         raise HTTPException(404, "collection not found")
@@ -144,11 +156,17 @@ def list_collection_images(collection_id: str) -> list[CollectionImageEntry]:
         if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
             continue
         ann = load_annotation(root, p.name)
+        has_ann = ann is not None
+        is_reviewed = has_ann and ann.reviewed
+        if status == "annotated" and not has_ann:
+            continue
+        if status == "unannotated" and has_ann:
+            continue
         out.append(
             CollectionImageEntry(
                 name=p.name,
-                annotated=ann is not None,
-                reviewed=ann is not None and ann.reviewed,
+                annotated=has_ann,
+                reviewed=is_reviewed,
                 count=len(ann.points) if ann else None,
             )
         )
@@ -269,6 +287,37 @@ async def ws_auto_annotate(ws: WebSocket, collection_id: str) -> None:
             await ws.close()
         except RuntimeError:
             pass
+
+
+class AutoAnnotateResult(BaseModel):
+    image_name: str
+    count: int
+    image_size: tuple[int, int]
+
+
+@app.post("/collections/{collection_id}/auto-annotate/{image_name}", response_model=AutoAnnotateResult)
+def auto_annotate_single(collection_id: str, image_name: str, threshold: float = 0.5) -> AutoAnnotateResult:
+    c = get_collection(collection_id)
+    if c is None:
+        raise HTTPException(404, "collection not found")
+    root = collection_root(collection_id)
+    path = root / "images" / image_name
+    if not path.exists():
+        raise HTTPException(404, "image not found")
+
+    pil = Image.open(path).convert("RGB")
+    result = _run_inference(pil, threshold)
+
+    ann = Annotation(
+        image_name=image_name,
+        points=[AnnotationPoint(x=pt.x, y=pt.y, confidence=pt.confidence, source="model") for pt in result.points],
+        image_size=result.image_size,
+        region=c.region,
+        density=c.density,
+        reviewed=False,
+    )
+    save_annotation(root, ann)
+    return AutoAnnotateResult(image_name=image_name, count=result.count, image_size=result.image_size)
 
 
 # ---------- annotations ----------

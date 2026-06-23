@@ -51,7 +51,25 @@ When model weights aren't available, inference endpoints return a random stub re
 
 ### Annotation workflow
 
-The annotation flow is model-assisted: auto-annotate runs batch inference on all images, saving predictions as unreviewed annotations. The user then reviews each image — correcting dots (click to add/remove, drag to move) — and approves. Three states: `○` no annotation, `◐` predicted (needs review), `●` reviewed.
+The annotation flow is model-assisted. Two auto-annotate paths:
+
+1. **Batch**: `WS /collections/{id}/auto-annotate` — runs P2PNet on all unreviewed images, streams progress, saves predictions as unreviewed annotations
+2. **Per-image**: `POST /collections/{id}/auto-annotate/{image_name}` — runs inference on one image, saves annotation, returns result
+
+The user then reviews each image — correcting dots (click to add/remove, drag to move) — and approves via "APPROVE & NEXT" which saves and auto-advances.
+
+Three states: `○` no annotation, `◐` predicted/needs review (yellow), `●` reviewed (green).
+
+### Sidebar lazy loading
+
+The `CollectionExplorer` uses two-phase image loading to handle large datasets (1000+ images):
+
+1. **On expand**: fetches only annotated images (`?status=annotated`) — fast, shows what matters
+2. **On demand**: "LOAD N UNANNOTATED" button fetches the rest (`?status=unannotated`)
+
+Per-image ⚡ buttons let users auto-annotate individual unannotated images inline. Loading spinners appear for every async operation (initial collection fetch, image list loading, per-image inference).
+
+The `CollectionSummary` includes `downloaded_count`, `annotated_count`, and `reviewed_count` — used for progress bars and unannotated counts without fetching the full image list.
 
 ### Frontend state
 

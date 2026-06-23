@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   Annotation,
+  AutoAnnotateImageResult,
   AutoAnnotateProgress,
   CollectionImageEntry,
   CollectionSummary,
@@ -58,8 +59,8 @@ export const api = {
 
   listCollections: () => get<CollectionSummary[]>('/collections'),
   getCollection: (id: string) => get<CollectionSummary>(`/collections/${id}`),
-  listImages: (id: string) =>
-    get<CollectionImageEntry[]>(`/collections/${id}/images`),
+  listImages: (id: string, status?: 'annotated' | 'unannotated') =>
+    get<CollectionImageEntry[]>(`/collections/${id}/images${status ? `?status=${status}` : ''}`),
   imageUrl: async (id: string, name: string) =>
     `${await base()}/collections/${id}/images/${encodeURIComponent(name)}`,
 
@@ -77,6 +78,9 @@ export const api = {
 
   inferCollectionImage: (id: string, name: string) =>
     post<InferResponse>(`/collections/${id}/infer/${encodeURIComponent(name)}`),
+
+  autoAnnotateImage: (id: string, name: string) =>
+    post<AutoAnnotateImageResult>(`/collections/${id}/auto-annotate/${encodeURIComponent(name)}`),
 
   downloadCollection: async (
     id: string,
