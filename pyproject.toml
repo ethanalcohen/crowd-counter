@@ -17,12 +17,15 @@ dependencies = [
     "torchvision>=0.20",
     "pywebview>=5.4",
     "websockets>=16.0",
+    "perspective2d",
+    "imageio>=2.37.3",
 ]
 
 [tool.uv]
 package = false
 
 [tool.uv.sources]
+perspective2d = { git = "https://github.com/jinlinyi/PerspectiveFields.git" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["crowdcounter"]

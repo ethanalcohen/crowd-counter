@@ -14,6 +14,9 @@ from PIL import Image
 
 from crowdcounter.core.inference import MODEL, density_from_points, infer_image
 from crowdcounter.core.paths import app_data_root
+from crowdcounter.world import pose_estimator
+from crowdcounter.world.projection import pixel_to_ground
+from crowdcounter.world.telemetry import Telemetry
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
@@ -127,6 +130,9 @@ class StreamControl:
     target_fps: float = 2.0
     seek_frame: int | None = None
     closed: bool = False
+    alt_m: float = 10.0
+    pose: Telemetry | None = None        # cached estimated pose
+    pose_dirty: bool = True               # force re-estimate when altitude changes etc.
 
 
 def _bgr_to_pil(arr: np.ndarray) -> Image.Image:
@@ -162,6 +168,11 @@ async def stream_video(ws, video_id: str) -> None:
                     control.seek_frame = int(msg.get("frame", 0))
                 elif msg.get("action") == "fps":
                     control.target_fps = float(msg.get("fps", 2.0))
+                elif msg.get("action") == "altitude":
+                    control.alt_m = float(msg.get("alt_m", 10.0))
+                    control.pose_dirty = True
+                elif msg.get("action") == "reestimate":
+                    control.pose_dirty = True
         except Exception:
             control.closed = True
 
@@ -211,14 +222,35 @@ async def stream_video(ws, video_id: str) -> None:
                 result = infer_image(pil, threshold=0.5)
                 latency = (cv2.getTickCount() - t0) / cv2.getTickFrequency() * 1000.0
 
+                # estimate / refresh pose if needed
+                new_pose = None
+                if control.pose_dirty or control.pose is None:
+                    try:
+                        new_pose = pose_estimator.estimate_pose(frame_bgr, alt_m=control.alt_m)
+                    except Exception as e:
+                        log_warn = str(e)
+                        new_pose = None
+                    control.pose_dirty = False
+
+                # update pose if we have a fresh one OR if alt changed
+                if new_pose is not None:
+                    control.pose = new_pose
+                elif control.pose is not None and control.pose.alt_m != control.alt_m:
+                    control.pose.alt_m = control.alt_m
+
+                # project peak
+                world_peak = None
+                if control.pose is not None and result.count > 0:
+                    world_peak = pixel_to_ground(result.peak_xy[0], result.peak_xy[1], control.pose)
+
                 frame_jpeg = _encode_jpeg(frame_bgr, quality=78, max_width=1280)
                 heat_jpeg = _render_heatmap_image(
                     [(p[0], p[1]) for p in result.points],
                     result.image_size,
                 )
-                return result, frame_jpeg, heat_jpeg, latency
+                return result, frame_jpeg, heat_jpeg, latency, world_peak
 
-            result, frame_jpeg, heat_jpeg, latency_ms = await loop.run_in_executor(None, work)
+            result, frame_jpeg, heat_jpeg, latency_ms, world_peak = await loop.run_in_executor(None, work)
 
             # update trail: store normalized coords + timestamp + count
             if result.count > 0:
@@ -232,6 +264,36 @@ async def stream_video(ws, video_id: str) -> None:
                 })
                 if len(trail) > TRAIL_LEN:
                     trail.pop(0)
+
+            pose_dict = None
+            if control.pose is not None:
+                pose_dict = {
+                    "pitch_deg": control.pose.pitch_deg,
+                    "roll_deg": control.pose.roll_deg,
+                    "yaw_deg": control.pose.yaw_deg,
+                    "alt_m": control.pose.alt_m,
+                    "source": control.pose.source,
+                    "confidence": control.pose.confidence,
+                    "vfov_deg": (
+                        2 * 57.29577951 * np.arctan(
+                            (control.pose.intrinsics.height / 2) / control.pose.intrinsics.fy
+                        )
+                        if control.pose.intrinsics else None
+                    ),
+                }
+
+            world_dict = None
+            if world_peak is not None:
+                world_dict = {
+                    "x_m": world_peak.x_m,
+                    "y_m": world_peak.y_m,
+                    "range_m": world_peak.range_m,
+                    "bearing_deg": world_peak.bearing_deg,
+                    "lat": world_peak.lat,
+                    "lon": world_peak.lon,
+                    "source": world_peak.source,
+                    "uncertainty_m": world_peak.uncertainty_m,
+                }
 
             payload = {
                 "type": "frame",
@@ -248,6 +310,8 @@ async def stream_video(ws, video_id: str) -> None:
                     "latency_ms": latency_ms,
                 },
                 "peak_trail": trail.copy(),
+                "pose": pose_dict,
+                "peak_world": world_dict,
             }
             await ws.send_json(payload)
 

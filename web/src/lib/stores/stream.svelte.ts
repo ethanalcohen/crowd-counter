@@ -7,6 +7,7 @@ class StreamStore {
   playing = $state(true)
   fps = $state(2)
   fpsActual = $state(0)
+  altitude = $state(10)
   error = $state<string | null>(null)
   connected = $state(false)
 
@@ -30,6 +31,7 @@ class StreamStore {
     ws.onopen = () => {
       this.connected = true
       this.send({ action: 'fps', fps: this.fps })
+      this.send({ action: 'altitude', alt_m: this.altitude })
       this.send({ action: this.playing ? 'play' : 'pause' })
     }
 
@@ -86,6 +88,15 @@ class StreamStore {
   setFps(fps: number) {
     this.fps = fps
     this.send({ action: 'fps', fps })
+  }
+
+  setAltitude(alt_m: number) {
+    this.altitude = alt_m
+    this.send({ action: 'altitude', alt_m })
+  }
+
+  reestimatePose() {
+    this.send({ action: 'reestimate' })
   }
 
   private send(msg: object) {

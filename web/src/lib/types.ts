@@ -31,6 +31,27 @@ export interface PeakTrailEntry {
   count: number
 }
 
+export interface PoseData {
+  pitch_deg: number
+  roll_deg: number
+  yaw_deg: number
+  alt_m: number
+  source: 'drone' | 'estimated' | 'manual' | 'none'
+  confidence: number
+  vfov_deg: number | null
+}
+
+export interface WorldPointData {
+  x_m: number
+  y_m: number
+  range_m: number
+  bearing_deg: number
+  lat: number | null
+  lon: number | null
+  source: 'drone' | 'estimated' | 'manual' | 'none'
+  uncertainty_m: number
+}
+
 export interface FrameAnalysis {
   type: 'frame'
   frame_idx: number
@@ -41,6 +62,8 @@ export interface FrameAnalysis {
   heatmap_jpeg_b64: string
   inference: FrameInference
   peak_trail: PeakTrailEntry[]
+  pose: PoseData | null
+  peak_world: WorldPointData | null
 }
 
 export interface StreamInfo {
